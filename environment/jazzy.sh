@@ -10,11 +10,15 @@
 #     CTR_USERNAME   컨테이너 안 계정명. 이미지 빌드 시
 #                    --build-arg USERNAME=... 로 준 값과 반드시 일치해야 한다.
 #     UR_WS          언더레이를 다른 곳에 두었을 때 그 경로를 지정
+#     IMAGE_NAME     사용할 이미지 (기본: build.sh 가 생성하는 이미지 이름)
+#     CTR_NAME       컨테이너 이름. 같은 이미지로 여러 개를 띄울 때 구분용
 # ==============================================================================
 
-IMAGE_NAME="${IMAGE_NAME:-localhost/ros2-jazzy}"
+IMAGE_NAME="${IMAGE_NAME:-localhost/robot-arm-study:jazzy}"
+CTR_NAME="${CTR_NAME:-robot-arm-study}"
 
-# 컨테이너 안 계정 = 이미지를 빌드한 호스트 사용자 (build.sh 가 그렇게 굽는다).
+# 컨테이너 내부의 사용자 계정 = 이미지를 빌드한 호스트 시스템의 사용자.
+# (build.sh 실행 때 id 명령으로 호스트 계정과 UID/GID 를 읽어 --build-arg 로 넘긴다)
 # 홈 경로 /home/<계정> 아래로 워크스페이스를 마운트하므로 값이 정확해야 한다.
 # 추측하지 않고 이미지에 기록된 값을 그대로 읽는다. 이미지가 아직 없으면
 # 현재 사용자로 폴백한다 (build.sh 를 쓰면 결국 같은 값이 된다).
@@ -53,7 +57,7 @@ PODMAN_RUN='podman run -it --rm --net=host -e DISPLAY=$DISPLAY \
 PODMAN_RUN_OPTS=(
 		-it
 		--rm 
-		--name jazzy-study
+		--name "${CTR_NAME}"
 		--net=host 
 		-e DISPLAY=$DISPLAY 
 		-v /tmp/.X11-unix:/tmp/.X11-unix

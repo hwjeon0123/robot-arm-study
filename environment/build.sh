@@ -17,7 +17,7 @@
 # ==============================================================================
 set -e
 
-IMAGE_NAME="${IMAGE_NAME:-localhost/ros2-jazzy}"
+IMAGE_NAME="${IMAGE_NAME:-localhost/robot-arm-study:jazzy}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARM_WS="$(dirname "${SCRIPT_DIR}")"
