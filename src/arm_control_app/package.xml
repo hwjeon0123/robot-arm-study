@@ -3,9 +3,9 @@
 <package format="3">
   <name>arm_control_app</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>MoveGroupInterface 로 팔을 제어하는 C++ 응용 노드</description>
   <maintainer email="52230596+hwjeon0123@users.noreply.github.com">hwjeon</maintainer>
-  <license>TODO: License declaration</license>
+  <license>BSD-3-Clause</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

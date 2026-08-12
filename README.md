@@ -179,6 +179,12 @@ ros2 run arm_control_app arm_control_app
 git 저장소는 8단계 도중에 만들었다. 그래서 1~7단계의 결과물은 최초 커밋에 한꺼번에
 들어가 있고, 그 이후부터 단계별로 커밋이 나뉜다.
 
+## 라이센스
+
+[BSD 3-Clause](LICENSE). 이 저장소가 include해 쓰는 `ur_description`, MoveIt 2 등이
+같은 라이센스를 쓴다. 언더레이(`ur_ws`)의 업스트림 소스는 이 저장소에 포함되지 않으며
+각자의 라이센스를 따른다.
+
 ## 디버깅 기록
 
 과정에서 겪은 문제와 원인 분석은 [`docs/`](docs/)에 정리했다.
