@@ -71,15 +71,13 @@ PODMAN_RUN_OPTS=(
 		--device nvidia.com/gpu=1
 		-e NVIDIA_DRIVER_CAPABILITIES=graphics,display,utility
 		-e VGL_DISPLAY=egl
+		# 지정하지 않으면 Qt 앱(RViz)이 실행할 때마다
+		#   "QStandardPaths: XDG_RUNTIME_DIR not set" 경고를 낸다.
+		# 동작에는 지장이 없지만 로그가 지저분해지므로 명시한다.
+		-e XDG_RUNTIME_DIR=/tmp/runtime-${CTR_USERNAME}
 	    -v "${UR_WS}:/home/${CTR_USERNAME}/ur_ws:rw,z"
 	    -v "${ARM_WS}:/home/${CTR_USERNAME}/arm_study_ws:rw,z"
 	)
-
-# 현재 디스플레이가 Sunshine 가상 모니터(sunshine-dummy.conf)로 구동 중인지 동적으로 프로세스 검사
-if pgrep -f "Xorg $DISPLAY.*sunshine-dummy" > /dev/null; then
-    echo "[Info] Sunshine 가상 모니터 감지됨: 그래픽 렌더링 충돌 방지를 위해 X11 IPC 공유 및 Qt MIT-SHM 옵션을 주입합니다."
-    PODMAN_RUN_OPTS+=( --ipc=host -e QT_X11_NO_MITSHM=1 )
-fi
 
 echo "Podman opt is ${PODMAN_RUN_OPTS[@]}"
 

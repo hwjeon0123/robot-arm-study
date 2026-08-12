@@ -56,6 +56,12 @@
   // 이미지의 계정과 같아야 한다. build.sh 가 호스트 계정으로 생성하므로 일치한다.
   "remoteUser": "${localEnv:USER}",
 
+  // 지정하지 않으면 Qt 앱(RViz)이 실행할 때마다
+  // "QStandardPaths: XDG_RUNTIME_DIR not set" 경고를 낸다.
+  "containerEnv": {
+    "XDG_RUNTIME_DIR": "/tmp/runtime-${localEnv:USER}"
+  },
+
   // ROS 자체는 이미지의 /etc/bash.bashrc 에서 이미 소싱된다.
   // 여기서는 언더레이 -> 오버레이 순서로 추가 소싱만 한다 (이미 있으면 건너뜀).
   "postCreateCommand": "grep -q arm_study_ws ~/.bashrc || printf '%s\\n' '[ -f ~/ur_ws/install/setup.bash ] && source ~/ur_ws/install/setup.bash' '[ -f ~/arm_study_ws/install/setup.bash ] && source ~/arm_study_ws/install/setup.bash' >> ~/.bashrc",
