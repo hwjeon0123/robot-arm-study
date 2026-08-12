@@ -1,0 +1,32 @@
+# MoveIt uses this configuration for controller management
+# MoveIt 내부에서 "요청을 Action Client로 내보내는" 역할을 하는 부품 이름. 항상 이 값을 그대로 사용. 
+moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
+
+# 실힝이 끝났다고 판단하는 시간 여유. (튜닝이 필요)
+trajectory_execution:
+  allowed_execution_duration_scaling: 1.2
+  allowed_goal_duration_margin: 0.5
+  allowed_start_tolerance: 0.01
+  execution_duration_monitoring: false # May lead to unexpectedly aborted goals with scaled JTC
+
+# MoveIt이 Action Client를 만들 이름들의 목록. 여기 적힌 이름과 정확히 같은 이름의 진짜 창구(컨트롤러)가 존재해야 연결이 됩니다.
+moveit_simple_controller_manager:
+  controller_names:
+    - joint_trajectory_controller
+
+  # 이름과 똑같은 이름의 하위 블록 (예: joint_trajectory_controller: 라는 키) — 그 컨트롤러의 세부사항입니다.
+  joint_trajectory_controller:
+  # action_ns: follow_joint_trajectory — 진짜 창구의 전체 주소는 /<컨트롤러이름>/follow_joint_trajectory 형태로 고정된 규칙입니다. 이 값도 고정입니다.
+    action_ns: follow_joint_trajectory
+  # type: FollowJointTrajectory — 어떤 형식의 메시지로 대화할지. 고정값입니다.
+    type: FollowJointTrajectory
+  # default: 여러 컨트롤러가 등록돼 있을 때 MoveIt이 자동으로 고르는 것.
+    default: true
+  # joints: — 이 컨트롤러가 담당하는 관절 6개 목록. SRDF의 ur_manipulator 그룹과 같은 관절이어야 합니다.      
+    joints:
+      - shoulder_pan_joint
+      - shoulder_lift_joint
+      - elbow_joint
+      - wrist_1_joint
+      - wrist_2_joint
+      - wrist_3_joint

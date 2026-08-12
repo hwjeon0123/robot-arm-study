@@ -1,0 +1,41 @@
+# ==============================================================================
+# 빌드 컨텍스트 제외 목록
+#
+#   ur_ws/build, install, log 는 호스트 절대경로가 박혀 있어
+#   이미지로 들어가면 추적하기 매우 어려운 오류를 유발한다. 반드시 제외.
+#   (이 구조에서는 rosdep 스테이징용으로 ur_ws/src 만 COPY 한다)
+# ==============================================================================
+
+# 호스트 빌드 산물 (치명적)
+ur_ws/build/
+ur_ws/install/
+ur_ws/log/
+**/build/
+**/install/
+**/log/
+
+# git 메타데이터 (이미지 용량 절감)
+**/.git/
+**/.github/
+
+# 캐시 / 임시 파일
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.pytest_cache/
+**/.mypy_cache/
+**/.colcon_install_layout
+
+# 에디터 설정
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*~
+
+# 컨테이너 관련 파일 (entrypoint/ws_build 는 COPY 대상이므로 예외)
+Containerfile
+Dockerfile
+.containerignore
+.dockerignore
+README.md
+run.sh

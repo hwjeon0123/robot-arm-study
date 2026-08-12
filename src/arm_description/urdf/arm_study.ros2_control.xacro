@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro">
+
+  <!-- 컨트롤러 yaml 경로. 지금은 기본값이 비어 있음 — arm_bringup에서 yaml을
+       만든 뒤, 런치 시점에 controllers_yaml:=<경로>로 채워 넣을 예정. -->
+  <xacro:arg name="controllers_yaml" default=""/>
+
+  <!-- ur5e.urdf.xacro가 이미 xacro:arg로 선언해 둔 name / tf_prefix 를 그대로 씀.
+       xacro:arg는 문서 전체에서 공유되므로 여기서 다시 선언할 필요 없음. -->
+
+  <!-- 관절 6개마다 command_interface(명령 받는 값) / state_interface(보고하는 값)를
+       나열하는 매크로. ur_description이 이미 정의해 둔 것을 재사용한다 —
+       로봇 형상(ur5e.urdf.xacro)이 정의한 관절 이름과 반드시 일치해야 하므로
+       직접 다시 타이핑하지 않고 여기서 가져다 쓴다. -->
+  <xacro:include filename="$(find ur_description)/urdf/inc/ur_joint_control.xacro"/>
+
+  <!-- ① 제어 인터페이스 선언: "이 로봇은 이런 방식으로 제어된다"는 명세.
+       hardware/plugin = 실제 제어를 수행하는 백엔드.
+       실물 로봇이면 UR 드라이버 플러그인이 들어가지만, 여기서는 Gazebo
+       시뮬레이션이므로 gz_ros2_control이 제공하는 시스템 플러그인을 지정. -->
+  <ros2_control name="$(arg name)" type="system">
+    <hardware>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware>
+    <!-- 위에서 include한 매크로 호출 → 관절 6개의 command/state_interface가
+         이 <ros2_control> 블록 안에 그대로 펼쳐진다. tf_prefix를 넘겨야
+         멀티암 등에서 관절 이름 접두사가 맞물린다 (지금은 빈 문자열). -->
+    <xacro:ur_joint_control_description tf_prefix="$(arg tf_prefix)"/>
+  </ros2_control>
+
+  <!-- ② Gazebo 전용 태그. 위의 <ros2_control> 선언은 "인터페이스가 뭔지"만
+       말할 뿐, Gazebo에게 "이 로봇을 스폰할 때 ros2_control 브리지를
+       같이 로드해라"라고 지시하는 건 별개 — 그 지시가 이 <gazebo> 블록.
+       filename/name은 gz_ros2_control 패키지가 제공하는 고정된 플러그인
+       식별자이므로 이 값 자체를 바꿀 일은 없다.
+       parameters 태그 = 컨트롤러 매니저가 읽을 yaml 경로. 4행의 controllers_yaml
+       인자가 여기로 그대로 흘러들어간다. -->
+  <gazebo>
+    <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <parameters>$(arg controllers_yaml)</parameters>
+    </plugin>
+  </gazebo>
+
+</robot>

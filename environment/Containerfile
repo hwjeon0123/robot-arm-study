@@ -1,0 +1,186 @@
+FROM docker.io/library/ubuntu:24.04 AS base
+ARG ROS_DISTRO="jazzy"
+# Install ROS
+RUN apt-get update && apt-get upgrade -y -qq
+
+RUN apt-get update && apt-get install -y \
+	curl \
+	gnupg2 \
+	lsb-release \
+	locales \
+	usbutils \
+	tar \
+	bzip2 \
+	wget \
+	sudo \
+	vim \
+	gnupg2 \
+	ca-certificates \
+    build-essential \
+	gdb
+ 	
+
+# To make no question/dialog is asked during apt-get install
+# 특별한 경우에 오류를 숨겨서 디버깅을 어렵게 만들기 때문에 권장하지 않음
+# https://bobcares.com/blog/debian_frontendnoninteractive-docker/
+#ENV DEBIAN_FRONTEND=noninteractive
+# 컨테이너 안 계정은 "이미지를 빌드한 호스트 사용자" 와 같게 만든다.
+# 그래야 --userns=keep-id 로 UID/GID 가 그대로 통과되어, 컨테이너에서 만든
+# 파일이 호스트에서도 본인 소유로 보이고 홈 경로(/home/$USERNAME)도 일치한다.
+# 아래 기본값은 대안일 뿐이므로, 반드시 build.sh 를 쓰거나 자신의 username과 id를 직접 써 넣도록 한다.
+#   --build-arg USERNAME=$(id -un) \
+#   --build-arg USER_UID=$(id -u) --build-arg USER_GID=$(id -g)
+ARG USERNAME=ubuntu
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+# Create user and group
+#RUN useradd --uid $USER_UID --gid $USER_GID -m $USERNAME
+# Example for Ubuntu base images where 'ubuntu' user exists at 1000
+RUN usermod -l $USERNAME ubuntu && \
+    groupmod -n $USERNAME ubuntu && \
+    usermod -d /home/$USERNAME -m $USERNAME
+
+RUN usermod -aG sudo $USERNAME
+RUN echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME && \
+    chmod 0440 /etc/sudoers.d/$USERNAME
+
+# 아래 내용은 ROS2 documentation: Jazzy의 System setup 항목 참고
+RUN locale-gen en_US en_US.UTF-8 && update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
+
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+
+RUN apt-get update && apt-get install software-properties-common -y
+RUN add-apt-repository universe -y
+
+RUN wget -qO - https://packagecloud.io/dcommander/virtualgl/gpgkey | gpg --dearmor -o  /etc/apt/trusted.gpg.d/VirtualGL.gpg && \
+        echo "deb https://packagecloud.io/dcommander/virtualgl/any/ any main" > /etc/apt/sources.list.d/VirtualGL.list && \
+        apt-get update && \
+        apt-get install -y --no-install-recommends virtualgl && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
+
+#RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+#RUN echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | tee /etc/apt-get/sources.list.d/ros2.list > /dev/null
+
+RUN ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F'"' '{print $4}') \
+    && curl -L -o /tmp/ros2-apt-source.deb "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo ${UBUNTU_CODENAME:-${VERSION_CODENAME}})_all.deb" \
+    && dpkg -i /tmp/ros2-apt-source.deb \
+    && rm /tmp/ros2-apt-source.deb
+
+RUN apt-get update && apt-get upgrade -y -qq
+
+RUN apt-get update && apt-get install -y tzdata && \
+	ln -fs /usr/share/zoneinfo/Asia/Seoul /etc/localtime && \
+	dpkg-reconfigure --frontend noninteractive tzdata
+
+RUN echo ${ROS_DISTRO}
+
+RUN apt-get update && apt-get install ros-${ROS_DISTRO}-desktop -y
+RUN apt-get update && apt-get install ros-dev-tools -y
+RUN apt-get update && apt-get install ros-${ROS_DISTRO}-tf2-tools -y
+
+# rosdep 은 root 로 1회 init 해야 sources list 가 생성된다.
+# 이후 rosdep update 는 사용자 컨텍스트에서 실행한다.
+# || true 는 이미 init 된 경우를 위한 것. 닫는 } 앞 세미콜론 필수.
+RUN { rosdep init || true ; }
+
+# install navigation2
+RUN apt-get update && apt-get install ros-${ROS_DISTRO}-navigation2 -y
+RUN apt-get update && apt-get install ros-${ROS_DISTRO}-nav2-bringup -y
+# install gazebo
+RUN apt-get update && apt-get install ros-${ROS_DISTRO}-ros-gz -y
+# install ros2 control
+RUN apt-get update && apt-get install ros-${ROS_DISTRO}-ros2-control -y
+RUN apt-get update && apt-get install ros-${ROS_DISTRO}-ros2-controllers -y
+# Install moveit package
+RUN apt-get update && apt-get install ros-${ROS_DISTRO}-moveit -y
+
+# Gazebo 에서 ros2_control 을 쓰기 위한 하드웨어 인터페이스 (ros-gz 만으론 부족)
+RUN apt-get update && apt-get install ros-${ROS_DISTRO}-gz-ros2-control -y
+
+# ------------------------------------------------------------------------------
+# UR 전용 패키지: 로봇 형상(URDF/mesh), MoveIt 설정(SRDF), 메시지, 드라이버.
+#
+# 이 프로젝트는 UR 패키지를 ur_ws 에서 소스로 빌드해 쓴다. 따라서 아래 바이너리를
+# 함께 설치하면 안 된다. 소스 빌드 후 UR 시뮬레이션 런치에서 충돌이 발생한다.
+# (같은 패키지가 /opt/ros 와 ur_ws/install 양쪽에 존재하게 되기 때문)
+#
+# 절대 설치하지 말 것:
+#RUN apt-get update && apt-get install -y \
+#	ros-${ROS_DISTRO}-ur-description \
+#	ros-${ROS_DISTRO}-ur-moveit-config \
+#	ros-${ROS_DISTRO}-ur-msgs \
+#	ros-${ROS_DISTRO}-ur-robot-driver
+# ------------------------------------------------------------------------------
+
+# 컨트롤러 직접 개발용
+#   realtime_tools            : update() 안에서 뮤텍스/할당 없이 데이터 교환
+#   generate_parameter_library: 최신 컨트롤러의 파라미터 선언 방식
+#   control_toolbox           : PID 구현체
+#   ros2_control_test_assets  : 컨트롤러 단위테스트용 더미 URDF
+#RUN apt-get update && apt-get install -y \
+#	ros-${ROS_DISTRO}-realtime-tools \
+#	ros-${ROS_DISTRO}-generate-parameter-library \
+#	ros-${ROS_DISTRO}-control-toolbox \
+#	ros-${ROS_DISTRO}-control-msgs \
+#	ros-${ROS_DISTRO}-kinematics-interface-kdl \
+#	ros-${ROS_DISTRO}-ros2-control-test-assets
+
+# Robot middleware 추가 패키지 
+RUN apt-get update && apt-get install ros-${ROS_DISTRO}-rmw-zenoh-cpp -y
+RUN apt-get update && apt-get install ros-${ROS_DISTRO}-rmw-cyclonedds-cpp -y
+
+# To workaroud if we have a problem with fastdds
+#ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+
+#Create shell script using echo command 
+RUN touch /usr/local/bin/entrypoint.sh && \
+	echo "#!/bin/sh" > /usr/local/bin/entrypoint.sh && \
+	echo ". /opt/ros/${ROS_DISTRO}/setup.sh" >> /usr/local/bin/entrypoint.sh && \
+	echo "exec \"\$@\"" >> /usr/local/bin/entrypoint.sh
+  
+# Environment variable for VirtualGL. You can omit -d egl option when running vir
+ENV VGL_DISPLAY=egl
+ENV PATH="/opt/VirtualGL/bin:${PATH}"
+
+RUN chmod +x /usr/local/bin/entrypoint.sh
+# Excute shell script when container start
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+  
+
+RUN cp /opt/ros/${ROS_DISTRO}/setup.sh /etc/profile.d/
+
+# add ros2 to bashrc in etc
+RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /etc/bash.bashrc
+
+USER $USERNAME
+#WORKDIR /home/$USERNAME/ros2_ws
+#RUN echo "source /home/$USERNAME/my_robot_ws/install/setup.bash" >> /home/$USERNAME/.bashrc
+#RUN echo "source /home/$USERNAME/ros2_ws/install/setup.bash" >> /home/$USERNAME/.bashrc
+
+WORKDIR /home/$USERNAME/ur_ws
+
+# ------------------------------------------------------------------------------
+# UR Robot ROS2 source의 의존성 사전 해결
+#    호스트 소스를 스테이징 경로로 복사해 rosdep 만 실행한다.
+#    → apt 의존성이 이미지에 포함되므로 런타임에 네트워크 없이 빌드 가능.
+#    → 실제 워크스페이스(${WS})는 비워두어 마운트와 충돌하지 않는다.
+#
+#    -r 미사용: 누락 의존성을 조용히 넘기지 않고 빌드 실패로 드러낸다.
+# ------------------------------------------------------------------------------
+COPY ./ur_ws/src /tmp/dep_stage/src
+
+#의존성 패키지를 컨테이너에 설치, || true;는 init 가 이미 실행되었으면 그냥 다음 단계로 넘어가기 위함
+
+RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
+    { sudo rosdep init || true ; } && \
+    rosdep update --rosdistro ${ROS_DISTRO} && \
+    sudo apt-get update && \
+    rosdep install --ignore-src --from-paths /tmp/dep_stage/src -y \
+        --rosdistro ${ROS_DISTRO} && \
+    sudo rm -rf /var/lib/apt/lists/* && \
+    sudo rm -rf /tmp/dep_stage
+
+
