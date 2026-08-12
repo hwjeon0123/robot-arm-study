@@ -64,6 +64,10 @@ PODMAN_RUN_OPTS=(
 		--security-opt label=type:container_runtime_t 
 		--userns=keep-id --user $(id -u):$(id -g)
 		--group-add keep-groups
+		# GPU 인덱스는 환경에 맞게 바꿀 것. 1장뿐이면 gpu=0 또는 gpu=all.
+		# 이 환경은 2장을 용도별로 나눠 쓴다 —
+		#   0번(고성능) : YOLO 등 로컬 AI 용으로 비워 둠
+		#   1번(저성능) : 시뮬레이션 렌더링은 이 정도로 충분
 		--device nvidia.com/gpu=1
 		-e NVIDIA_DRIVER_CAPABILITIES=graphics,display,utility
 		-e VGL_DISPLAY=egl

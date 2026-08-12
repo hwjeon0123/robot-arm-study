@@ -129,6 +129,12 @@ cd robot-arm-study/environment
 | `robot-arm-study/` | `~/arm_study_ws` |
 | `../ur_ws/` | `~/ur_ws` |
 
+> **VS Code 로 작업하는 경우** — `./jazzy.sh` 대신 저장소를 VS Code 로 열고
+> `Reopen in Container` 를 실행한다. `.devcontainer/devcontainer.json` 이
+> `jazzy.sh` 와 동일한 마운트 구조(`~/arm_study_ws`, `~/ur_ws`)를 만들도록
+> 맞춰 두었다. 어느 쪽으로 들어가든 컨테이너 안 경로가 같아야 `install/` 에
+> 기록되는 경로가 어긋나지 않는다.
+
 ### 4. 빌드 (컨테이너 안에서)
 
 언더레이 먼저, 오버레이는 그 다음. 소싱 순서가 곧 의존 순서다.

@@ -1,0 +1,77 @@
+{
+  // ===========================================================================
+  // VS Code 로 컨테이너 안에서 직접 편집/빌드할 때 쓰는 설정.
+  //
+  //   터미널만 쓸 거라면 environment/jazzy.sh 로 충분하다. 이 파일은
+  //   그 스크립트와 "같은 마운트 구조"를 GUI 쪽에도 그대로 만들어 준다.
+  //   두 방식 중 무엇으로 들어가든 컨테이너 안 경로가 같아야,
+  //   빌드 산출물(install/)에 기록되는 경로가 어긋나지 않는다.
+  //
+  //   이미지가 없으면 먼저 environment/build.sh 를 실행할 것.
+  //
+  //   ── 전제 환경 ──────────────────────────────────────────────────────────
+  //   rootless podman : --userns=keep-id 는 podman 전용 (Docker 에는 없다)
+  //   NVIDIA CDI      : nvidia.com/gpu=N 형식은 Container Toolkit 이 필요
+  //   X11             : Wayland / macOS / Windows 는 소켓 공유 방식이 다르다
+  //   SELinux         : label 옵션과 :z 는 SELinux 환경에서만 실제로 작동하고
+  //                     Ubuntu(AppArmor) 등에서는 무시된다
+  // ===========================================================================
+  "name": "robot-arm-study (ROS 2 Jazzy)",
+  "image": "localhost/robot-arm-study:jazzy",
+
+  // 이 저장소 = 오버레이 워크스페이스.
+  // 컨테이너 안 경로는 jazzy.sh 와 맞춰 ~/arm_study_ws 로 고정한다.
+  "workspaceMount": "source=${localWorkspaceFolder},target=/home/${localEnv:USER}/arm_study_ws,type=bind,z",
+  "workspaceFolder": "/home/${localEnv:USER}/arm_study_ws",
+
+  "runArgs": [
+    "--net=host",
+
+    // 호스트 UID/GID 를 그대로 통과시킨다. 이미지가 호스트 계정으로
+    // 생성돼 있으므로(build.sh), 컨테이너에서 만든 파일이 호스트에서도
+    // 본인 소유로 보인다.
+    "--userns=keep-id",
+    "--group-add", "keep-groups",
+    "--security-opt", "label=type:container_runtime_t",
+    "--shm-size=1g",
+
+    // X11 (RViz, Gazebo)
+    "-e", "DISPLAY=${localEnv:DISPLAY}",
+    "-v", "/tmp/.X11-unix:/tmp/.X11-unix:rw",
+
+    // NVIDIA GPU 렌더링. 원격 접속 환경에서는 vglrun 을 앞에 붙여 실행한다.
+    //
+    // 인덱스는 환경에 맞게 바꿀 것. GPU 가 1장뿐이면 gpu=0 또는 gpu=all.
+    // 이 저장소를 만든 환경은 GPU 2장을 용도별로 나눠 쓴다 —
+    //   0번(고성능) : YOLO 등 로컬 AI 용으로 비워 둔다
+    //   1번(저성능) : 시뮬레이션 렌더링에는 이 정도로 충분하다
+    "--device", "nvidia.com/gpu=1",
+    "-e", "NVIDIA_DRIVER_CAPABILITIES=graphics,display,utility",
+    "-e", "VGL_DISPLAY=egl",
+
+    // 언더레이. 저장소 밖(../ur_ws)에 있으므로 별도로 마운트한다.
+    "-v", "${localWorkspaceFolder}/../ur_ws:/home/${localEnv:USER}/ur_ws:rw,z"
+  ],
+
+  // 이미지의 계정과 같아야 한다. build.sh 가 호스트 계정으로 생성하므로 일치한다.
+  "remoteUser": "${localEnv:USER}",
+
+  // ROS 자체는 이미지의 /etc/bash.bashrc 에서 이미 소싱된다.
+  // 여기서는 언더레이 -> 오버레이 순서로 추가 소싱만 한다 (이미 있으면 건너뜀).
+  "postCreateCommand": "grep -q arm_study_ws ~/.bashrc || printf '%s\\n' '[ -f ~/ur_ws/install/setup.bash ] && source ~/ur_ws/install/setup.bash' '[ -f ~/arm_study_ws/install/setup.bash ] && source ~/arm_study_ws/install/setup.bash' >> ~/.bashrc",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-iot.vscode-ros"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/bin/python3",
+        "python.analysis.extraPaths": [
+          "/opt/ros/jazzy/lib/python3.12/site-packages"
+        ]
+      }
+    }
+  }
+}
