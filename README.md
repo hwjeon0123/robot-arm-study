@@ -77,7 +77,7 @@ robot-arm-study/                     ← 이 저장소 (오버레이). 컨테이
 언더레이는 저장소 밖, 이 저장소와 같은 디렉토리 계층에 둔다. 이미지 빌드 시 `rosdep`으로
 의존성 패키지를 미리 설치해 두는 데 필요하다.
 
-받아야 할 저장소가 14개라 하나씩 `git clone` 하지 않고 `vcs`(vcstool)로 한 번에
+복제해야 할 저장소가 14개라 하나씩 `git clone` 하지 않고 `vcs`(vcstool)로 한 번에
 가져온다. 어떤 저장소의 어떤 브랜치를 받을지는 `environment/ur_ws.repos`에 적혀 있다.
 
 ```bash
@@ -88,9 +88,9 @@ mkdir -p ur_ws/src && cd ur_ws
 vcs import src < ../robot-arm-study/environment/ur_ws.repos
 ```
 
-받아지는 것은 크게 세 갈래다.
+복제할 저장소는 크게 세 영역으로 나눠진다.
 
-| 갈래 | 저장소 |
+| 영역 | 저장소 |
 |---|---|
 | UR 로봇 | `ur_driver`, `..._ROS2_Description`, `..._Client_Library`, `ur_simulation_gz`, `ur_msgs` |
 | 모션 플래닝 | `moveit2`, `moveit_msgs`, `srdfdom` |
@@ -139,6 +139,13 @@ cd robot-arm-study/environment
 > 맞춰 두었다. 어느 쪽으로 들어가든 컨테이너 안 경로가 같아야 `install/` 에
 > 기록되는 경로가 어긋나지 않는다.
 
+> Dev Containers 확장은 기본적으로 docker 를 호출한다. podman 을 쓰려면 VS Code 설정 파일
+> (`~/.config/Code/User/settings.json`)에 아래 내용을 추가한다.
+>
+> ```json
+> "dev.containers.dockerPath": "podman",
+> "dev.containers.dockerComposePath": "podman compose",
+
 ### 4. 빌드 (컨테이너 안에서)
 
 언더레이 먼저, 오버레이는 그 다음. 소싱 순서가 곧 의존 순서다.
@@ -169,7 +176,7 @@ ros2 run arm_control_app arm_control_app
 
 ## 진행 단계
 
-학습 순서대로 쌓았다. 각 단계는 "그 전 단계까지로는 안 되는 것"을 하나씩 해결한다.
+학습 순서대로 정리했다.
 
 | 단계 | 한 일 | 상태 |
 |---|---|---|
