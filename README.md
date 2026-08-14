@@ -214,5 +214,4 @@ git 저장소는 8단계 도중에 만들었다. 그래서 1~7단계의 결과�
 
 ## 커밋 규칙
 
-[Conventional Commits](docs/commit-convention.md)를 따른다. 글에서 코드를 인용할 때
-브랜치가 아니라 커밋 해시로 고정하기 때문에, 커밋 하나가 설명 단위가 되도록 적는다.
+[Conventional Commits](docs/commit-convention.md)를 따른다.
