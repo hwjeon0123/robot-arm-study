@@ -53,10 +53,10 @@ Headless Ubuntu에 Podman 컨테이너 환경을 기반으로 하고 Nvidia grap
 ## 구조
 
 호스트에서의 디렉토리 이름은 상관없다. `jazzy.sh`가 스크립트 위치를 기준으로 경로를
-잡고, 컨테이너 안에서는 항상 `~/arm_study_ws`로 마운트된다.
+잡고, 컨테이너 안에서는 항상 `~/robot-arm-study`로 마운트된다.
 
 ```
-robot-arm-study/                     ← 이 저장소 (오버레이). 컨테이너 안 ~/arm_study_ws
+robot-arm-study/                     ← 이 저장소 (오버레이). 컨테이너 안 ~/robot-arm-study
 ├── environment/                     컨테이너 환경
 │   ├── Containerfile                ROS 2 Jazzy + Gazebo + MoveIt + VirtualGL
 │   ├── build.sh                     이미지 빌드 (호스트 계정/UID로 자동 설정)
@@ -130,12 +130,12 @@ cd robot-arm-study/environment
 
 | 호스트 | 컨테이너 |
 |---|---|
-| `robot-arm-study/` | `~/arm_study_ws` |
+| `robot-arm-study/` | `~/robot-arm-study` |
 | `../ur_ws/` | `~/ur_ws` |
 
 > **VS Code 로 작업하는 경우** — `./jazzy.sh` 대신 저장소를 VS Code 로 열고
 > `Reopen in Container` 를 실행한다. `.devcontainer/devcontainer.json` 이
-> `jazzy.sh` 와 동일한 마운트 구조(`~/arm_study_ws`, `~/ur_ws`)를 만들도록
+> `jazzy.sh` 와 동일한 마운트 구조(`~/robot-arm-study`, `~/ur_ws`)를 만들도록
 > 맞춰 두었다. 어느 쪽으로 들어가든 컨테이너 안 경로가 같아야 `install/` 에
 > 기록되는 경로가 어긋나지 않는다.
 
@@ -144,7 +144,8 @@ cd robot-arm-study/environment
 >
 > ```json
 > "dev.containers.dockerPath": "podman",
-> "dev.containers.dockerComposePath": "podman compose",
+> "dev.containers.dockerComposePath": "podman compose"
+> ```
 
 ### 4. 빌드 (컨테이너 안에서)
 
@@ -154,7 +155,7 @@ cd robot-arm-study/environment
 cd ~/ur_ws && colcon build            # 최초 1회. 시간이 오래 걸린다
 source install/setup.bash
 
-cd ~/arm_study_ws && colcon build --symlink-install
+cd ~/robot-arm-study && colcon build --symlink-install
 source install/setup.bash
 ```
 

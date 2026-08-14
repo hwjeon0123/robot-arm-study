@@ -19,12 +19,27 @@ set -e
 
 IMAGE_NAME="${IMAGE_NAME:-localhost/robot-arm-study:jazzy}"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 ARM_WS="$(dirname "${SCRIPT_DIR}")"
 UR_WS="${UR_WS:-$(dirname "${ARM_WS}")/ur_ws}"
 
-# Containerfile 의 COPY 가 './ur_ws/src' 를 참조하므로,
-# 컨텍스트는 ur_ws 의 부모이고 ur_ws 의 디렉토리명은 그대로여야 한다.
+# --- 빌드 컨텍스트 ------------------------------------------------------------
+# podman build 는 "컨텍스트" 로 지정한 디렉토리 안의 파일만 이미지로 복사할 수 있다.
+# 그 밖에 있는 파일은 COPY 로 가져올 수 없다.
+#
+# Containerfile 에 다음 줄이 있고, 여기서 './' 는 컨텍스트 디렉토리를 가리킨다.
+#
+#     COPY ./ur_ws/src /tmp/dep_stage/src
+#
+# 즉 "컨텍스트 안의 ur_ws/src" 를 복사하라는 뜻이다. 따라서 컨텍스트로 ur_ws 자신을
+# 지정하면 ur_ws/ur_ws/src 를 찾게 되어 실패한다. ur_ws 를 품고 있는 부모 디렉토리를
+# 지정해야 한다.
+#
+#     컨텍스트        <부모>/
+#     COPY ./ur_ws/src  ->  <부모>/ur_ws/src
+#
+# 그리고 'ur_ws' 라는 이름이 Containerfile 에 그대로 적혀 있으므로,
+# 언더레이 디렉토리를 다른 이름으로 만들면 이 COPY가 실패하기 때문에 아래에서 이름을 검사한다.
 BUILD_CTX="$(dirname "${UR_WS}")"
 
 if [ ! -d "${UR_WS}/src" ]; then

@@ -3,7 +3,7 @@
 # ROS 2 Jazzy 컨테이너 기동 / 접속
 #
 #   마운트 구조 (이 스크립트 위치 기준으로 자동 산출)
-#     <저장소>/                → 컨테이너 /home/${CTR_USERNAME}/arm_study_ws   오버레이
+#     <저장소>/                → 컨테이너 /home/${CTR_USERNAME}/robot-arm-study 오버레이
 #     <저장소>/../ur_ws        → 컨테이너 /home/${CTR_USERNAME}/ur_ws          언더레이
 #
 #   환경 변수로 덮어쓸 수 있다:
@@ -28,7 +28,7 @@ if [ -z "${CTR_USERNAME}" ]; then
     CTR_USERNAME="${CTR_USERNAME:-$(id -un)}"
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 ARM_WS="$(dirname "${SCRIPT_DIR}")"              # 이 저장소 = 오버레이 워크스페이스
 UR_WS="${UR_WS:-$(dirname "${ARM_WS}")/ur_ws}"   # 언더레이 (저장소 밖, 업스트림 소스)
 
@@ -43,12 +43,6 @@ fi
 CONTAINER_ID=$(podman ps -q -f ancestor=$IMAGE_NAME)
 
 echo "Container ID is ${CONTAINER_ID}"
-
-# 아래는 예전 명령어 
-PODMAN_RUN='podman run -it --rm --net=host -e DISPLAY=$DISPLAY \
-		-v /tmp/.X11-unix:/tmp/.X11-unix -c "source /opt/ros/jazzy/setup.bash" \
-		--security-opt label=type:container_runtime_t --userns=keep-id \
-		localhost/ros2-jazzy /bin/bash'
 
 # bash 실행 후 다른 프로그램을 실행하려면
 # /bin/bash -c "source /opt/ros/jazzy/setup.bash && {실행할 프로그램}" 
@@ -76,7 +70,7 @@ PODMAN_RUN_OPTS=(
 		# 동작에는 지장이 없지만 로그가 지저분해지므로 명시한다.
 		-e XDG_RUNTIME_DIR=/tmp/runtime-${CTR_USERNAME}
 	    -v "${UR_WS}:/home/${CTR_USERNAME}/ur_ws:rw,z"
-	    -v "${ARM_WS}:/home/${CTR_USERNAME}/arm_study_ws:rw,z"
+	    -v "${ARM_WS}:/home/${CTR_USERNAME}/robot-arm-study:rw,z"
 	)
 
 echo "Podman opt is ${PODMAN_RUN_OPTS[@]}"
