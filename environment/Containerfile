@@ -156,19 +156,26 @@ RUN cp /opt/ros/${ROS_DISTRO}/setup.sh /etc/profile.d/
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /etc/bash.bashrc
 
 USER $USERNAME
-#WORKDIR /home/$USERNAME/ros2_ws
-#RUN echo "source /home/$USERNAME/my_robot_ws/install/setup.bash" >> /home/$USERNAME/.bashrc
-#RUN echo "source /home/$USERNAME/ros2_ws/install/setup.bash" >> /home/$USERNAME/.bashrc
 
-WORKDIR /home/$USERNAME/ur_ws
+# ------------------------------------------------------------------------------
+# 워크스페이스 자동 소싱
+#   ROS2 패키지와 작업 공간을 소싱하는 스크립트를 .bashrc에 추가하여 매번 입력하는
+#   번거로움을 없앰.
+#   순서가 곧 의존 순서다: /opt/ros (위에서 이미 설정) -> 언더레이 -> 오버레이
+#   최초 colcon 빌드 전에는 install/ 이 없으므로 파일 존재 검사를 붙여 조용히 건너뛰게 한다.
+# ------------------------------------------------------------------------------
+RUN echo '[ -f ~/ur_ws/install/setup.bash ] && source ~/ur_ws/install/setup.bash' >> /home/$USERNAME/.bashrc && \
+    echo '[ -f ~/robot-arm-study/install/setup.bash ] && source ~/robot-arm-study/install/setup.bash' >> /home/$USERNAME/.bashrc
+
+WORKDIR /home/$USERNAME/robot-arm-study
 
 # ------------------------------------------------------------------------------
 # UR Robot ROS2 source의 의존성 사전 해결
-#    호스트 소스를 스테이징 경로로 복사해 rosdep 만 실행한다.
+#    호스트 소스를 임시 작업 공간으로 복사해 rosdep 만 실행한다.
 #    → apt 의존성이 이미지에 포함되므로 런타임에 네트워크 없이 빌드 가능.
-#    → 실제 워크스페이스(${WS})는 비워두어 마운트와 충돌하지 않는다.
+#    → 임시 작업으로만 쓰고 지우므로, 런타임에 마운트되는 ~/ur_ws와 겹치지 않는다.
 #
-#    -r 미사용: 누락 의존성을 조용히 넘기지 않고 빌드 실패로 드러낸다.
+#    -r 미사용: 누락 의존성을 조용히 넘기지 않고 빌드 실패로 드러나게 한다.
 # ------------------------------------------------------------------------------
 COPY ./ur_ws/src /tmp/dep_stage/src
 
