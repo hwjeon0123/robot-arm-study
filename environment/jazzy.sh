@@ -88,7 +88,10 @@ else
         podman start -ai $STOPPED_ID
     else
         echo "새로운 컨테이너를 생성합니다..."
-        podman run -d "${PODMAN_RUN_OPTS[@]}" $IMAGE_NAME /bin/bash
+        # 백그라운드로 띄운 뒤 곧바로 접속한다. 셸을 빠져나가도 컨테이너는
+        # 계속 살아 있으므로, 다시 실행하면 위의 exec 분기로 재접속된다.
+        podman run -d "${PODMAN_RUN_OPTS[@]}" $IMAGE_NAME /bin/bash > /dev/null \
+            && podman exec -it "${CTR_NAME}" /bin/bash
     fi
 fi
 
