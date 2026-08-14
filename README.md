@@ -67,7 +67,7 @@ robot-arm-study/                     ← 이 저장소 (오버레이). 컨테이
 │   ├── arm_description/             형상 — URDF/xacro, ros2_control 선언, SRDF
 │   ├── arm_bringup/                 실행 — launch, 컨트롤러/MoveIt 설정
 │   └── arm_control_app/             응용 — C++ MoveGroupInterface 노드
-└── docs/                            디버깅 기록
+└── docs/                            디버깅 기록, 규칙
 ```
 
 ## 시작하기
@@ -211,3 +211,8 @@ git 저장소는 8단계 도중에 만들었다. 그래서 1~7단계의 결과�
   — 언더레이(`ur_ws`)에서 UR 공식 예제를 돌려 보다 겪은 문제. MoveIt이 명령을 보내는
   컨트롤러 이름(실물 로봇용 `scaled_joint_trajectory_controller`)과 시뮬레이터에 실제로
   떠 있는 이름(`joint_trajectory_controller`)이 달라 명령이 도달하지 못했다.
+
+## 커밋 규칙
+
+[Conventional Commits](docs/commit-convention.md)를 따른다. 글에서 코드를 인용할 때
+브랜치가 아니라 커밋 해시로 고정하기 때문에, 커밋 하나가 설명 단위가 되도록 적는다.
