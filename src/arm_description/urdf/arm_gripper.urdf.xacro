@@ -44,21 +44,28 @@
   </inertial>
 </link>
 
+<!-- Mimic 방식 적용. Joint는 두 개 다 필요. finger1_joint를 기준으로 
+  finger2_joint를 mimic joint로 설정 
+  finger2_joint의 axis에서 y축을 반대로 설정하여 y축 값이 커지면 중심 반대로 이동하도록 함
+  원점을 그리퍼가 완전히 열린 상태로 지정. 그리퍼 두깨가 0.01이므로 finger1_joint와
+   finger2_joint의 limit upper를 0.025로 설정하여 그리퍼가 닫히도록 함
+  -->
 
 <joint name="finger1_joint" type="prismatic">
   <parent link="tool0"/>
   <child link="finger1_link"/>
-  <origin xyz="0 0.02 0.05" rpy="0 0 0"/>
-  <axis xyz="0 1 0"/>
-  <limit lower="0.0" upper="0.04" effort="20" velocity="0.1"/>
+  <origin xyz="0 0.03 0.05" rpy="0 0 0"/>
+  <axis xyz="0 -1 0"/>
+  <limit lower="0.0" upper="0.025" effort="20" velocity="0.1"/>
 </joint>
 
 <joint name="finger2_joint" type="prismatic">
   <parent link="tool0"/>
   <child link="finger2_link"/>
-  <origin xyz="0 -0.02 0.05" rpy="0 0 0"/>
+  <origin xyz="0 -0.03 0.05" rpy="0 0 0"/>
   <axis xyz="0 1 0"/>
-  <limit lower="0.0" upper="0.04" effort="20" velocity="0.1"/>
+  <limit lower="0.0" upper="0.025" effort="20" velocity="0.1"/>
+  <mimic joint="finger1_joint" multiplier="1.0" offset="0.0"/>
 </joint>
 
 </robot>
