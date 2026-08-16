@@ -18,6 +18,8 @@ joint_trajectory_controller:
       - wrist_1_joint
       - wrist_2_joint
       - wrist_3_joint
+      - finger1_joint
+      # finger2_joint는 mimic joint이므로 여기서 명시하지 않아도 된다.
     command_interfaces:
       - position
     state_interfaces:
@@ -35,3 +37,5 @@ joint_trajectory_controller:
       wrist_1_joint: { trajectory: 0.2, goal: 0.1 }
       wrist_2_joint: { trajectory: 0.2, goal: 0.1 }
       wrist_3_joint: { trajectory: 0.2, goal: 0.1 }
+      finger1_joint: { trajectory: 0.2, goal: 0.1 }
+      # finger2_joint는 mimic joint이므로 여기서 명시하지 않아도 된다.

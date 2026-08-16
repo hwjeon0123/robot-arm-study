@@ -6,10 +6,6 @@
   <xacro:arg name="ur_type"   default="ur5e"/>
   <xacro:arg name="tf_prefix" default=""/>
 
-  <!-- ② UR 팔 매크로 가져오기 (underlay ur_ws의 ur_description) -->
-  <xacro:include filename="$(find ur_description)/urdf/ur_macro.xacro"/>
-  <xacro:include filename="$(find arm_description)/urdf/arm_study.ros2_control.xacro"/>
-
 <link name="finger1_link">
   <visual>
     <geometry>
