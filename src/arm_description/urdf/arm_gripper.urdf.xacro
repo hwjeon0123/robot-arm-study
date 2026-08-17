@@ -64,4 +64,18 @@
   <mimic joint="finger1_joint" multiplier="1.0" offset="0.0"/>
 </joint>
 
+<!-- TCP (Tool Center Point) link 
+  물체를 잡을 때 사용하는 그리퍼의 중심점에 대한 가상 좌표계이다.
+  TCP link는 tool0 link에서 z축으로 0.075m 떨어진 손가락 끝에 위치하도록 설정. 
+  (finger1_joint 원점: tool0 기준 z축으로 0.05, 그리퍼의 길이 0.05m, 따라서 0.05 + 0.05/2 = 0.075m)
+  TCP link는 고정 링크로 설정하여, 그리퍼가 움직이더라도 TCP link는 tool0 link에 고정되도록 함.
+-->
+<link name="tcp_link"/>
+
+<joint name="tcp_joint" type="fixed">
+  <parent link="tool0"/>
+  <child link="tcp_link"/>
+  <origin xyz="0 0 0.075" rpy="0 0 0"/>
+</joint>
+
 </robot>

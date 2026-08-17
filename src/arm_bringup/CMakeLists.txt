@@ -14,7 +14,7 @@ find_package(xacro REQUIRED)
 
 
 install(DIRECTORY
-  launch config
+  launch config models
   DESTINATION share/${PROJECT_NAME}
 )
 

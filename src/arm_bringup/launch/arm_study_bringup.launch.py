@@ -77,6 +77,24 @@ def generate_launch_description():
         ],
     )
 
+    # 픽업용 대상물 생성 (위치/자세는 board.sdf의 <pose>에 있음)
+    board_spawn_entity = Node(
+        package="ros_gz_sim",
+        executable="create",
+        output="screen",
+        arguments=[
+            "-file",
+            PathJoinSubstitution(
+                [FindPackageShare("arm_bringup"), "models", "board.sdf"]
+            ),
+            "-name",
+            "board",
+            "-x", "0.4",
+            "-y", "0.6",
+            "-z", "0.0025",
+        ],
+    )
+
     # Joint state broadcaster
     joint_state_broadcaster_spawner = Node(
         package="controller_manager",
@@ -91,6 +109,13 @@ def generate_launch_description():
         arguments=["joint_trajectory_controller", "--controller-manager", "/controller_manager"],
     )
 
+    # Gripper controller spawner
+    gripper_controller_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=["gripper_controller", "--controller-manager", "/controller_manager"],
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument("ur_type", default_value="ur5e"),
         DeclareLaunchArgument("use_sim_time", default_value="true"),
@@ -98,8 +123,10 @@ def generate_launch_description():
         DeclareLaunchArgument("world_file", default_value="default.sdf"),
         robot_state_publisher_node,
         gz_spawn_entity,
+        board_spawn_entity,
         joint_state_broadcaster_spawner,
         joint_trajectory_controller_spawner,
+        gripper_controller_spawner,
         gz_launch_description,
     ])
 
