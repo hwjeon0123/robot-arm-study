@@ -1,3 +1,5 @@
+🇰🇷 한국어 | [🇺🇸 English](README.en.md)
+
 # robot-arm-study
 
 ROS 2 Jazzy + Gazebo로 로봇팔 픽앤플레이스를 비전과 AI로 고도화해 가는 방법에 대한 
