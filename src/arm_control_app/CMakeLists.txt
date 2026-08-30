@@ -9,9 +9,17 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
+find_package(control_msgs REQUIRED)
+find_package(rclcpp_action REQUIRED)
 
 add_executable(arm_control_app src/main.cpp)
-ament_target_dependencies(arm_control_app rclcpp moveit_ros_planning_interface)
+ament_target_dependencies(arm_control_app
+  rclcpp 
+  moveit_ros_planning_interface
+  control_msgs
+  rclcpp_action
+)
+
 install(TARGETS
   arm_control_app
   DESTINATION lib/${PROJECT_NAME}/
