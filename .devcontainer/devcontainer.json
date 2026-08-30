@@ -48,6 +48,7 @@
     "--device", "nvidia.com/gpu=1",
     "-e", "NVIDIA_DRIVER_CAPABILITIES=graphics,display,utility",
     "-e", "VGL_DISPLAY=egl",
+	"-e", "XDG_RUNTIME_DIR=/tmp/runtime-${localEnv:USER}",
 
     // 언더레이. 저장소 밖(../ur_ws)에 있으므로 별도로 마운트한다.
     "-v", "${localWorkspaceFolder}/../ur_ws:/home/${localEnv:USER}/ur_ws:rw,z"
@@ -69,8 +70,7 @@
   "customizations": {
     "vscode": {
       "extensions": [
-        "ms-vscode.cpptools",
-        "ms-iot.vscode-ros"
+        "llvm-vs-code-extensions.vscode-clangd"
       ],
       "settings": {
         "python.defaultInterpreterPath": "/usr/bin/python3",
