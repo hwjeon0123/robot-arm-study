@@ -116,12 +116,20 @@ def generate_launch_description():
         arguments=["gripper_controller", "--controller-manager", "/controller_manager"],
     )
 
+    clock_bridge = Node(
+    package="ros_gz_bridge",
+    executable="parameter_bridge",
+    arguments=["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"],
+    output="screen",
+)
+
     return LaunchDescription([
         DeclareLaunchArgument("ur_type", default_value="ur5e"),
         DeclareLaunchArgument("use_sim_time", default_value="true"),
         DeclareLaunchArgument("gazebo_gui", default_value="true"),
         DeclareLaunchArgument("world_file", default_value="default.sdf"),
         robot_state_publisher_node,
+        clock_bridge,
         gz_spawn_entity,
         board_spawn_entity,
         joint_state_broadcaster_spawner,
