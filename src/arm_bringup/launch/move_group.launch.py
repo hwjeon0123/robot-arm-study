@@ -25,7 +25,8 @@ def generate_launch_description():
             {"name": "ur5e"},
         )
         .robot_description_kinematics(
-            ur_moveit_config_share / "config" / "kinematics.yaml"
+            #ur_moveit_config_share / "config" / "kinematics.yaml"
+            Path(get_package_share_directory("arm_bringup")) / "config" / "kinematics.yaml"
         )
         .joint_limits(ur_moveit_config_share / "config" / "joint_limits.yaml")
         # 기본값(load_all=True)으로 두면 pilz까지 자동으로 끌려와서
