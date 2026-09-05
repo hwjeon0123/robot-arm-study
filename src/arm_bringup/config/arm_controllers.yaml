@@ -42,7 +42,7 @@ gripper_controller:
   ros__parameters:
     joint: finger1_joint
     allow_stalling: true       # 물체를 붙잡아 손가락이 목표까지 못 가도(끼임=stall) 성공으로 처리
-    stall_velocity_threshold: 0.001
+    stall_velocity_threshold: 0.0001
     stall_timeout: 0.5
     goal_tolerance: 0.002      # 전체 이동범위가 0.025m라 기본값(0.01)은 너무 헐거움
 
