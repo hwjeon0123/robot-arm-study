@@ -86,7 +86,7 @@ int main(int argc, char * argv[])
   // 계획을 세우고 바로 실행까지 한 번에 수행. (계획만 세우고 싶으면 move_group_interface.plan() 사용)
   auto ok = static_cast<bool>(move_group_interface.move());
   if (!ok) {
-    RCLCPP_ERROR(logger, "Move to 'home' failed");
+    RCLCPP_ERROR(logger, "Move to 'test_configuration' failed");
     return finish(-1, spinner);
   }
 
@@ -168,7 +168,7 @@ int main(int argc, char * argv[])
   RCLCPP_INFO(logger, "Move to above position of object succeeded");
 
   // 물체를 잡기 위해 타겟 위치로 이동
-  make_pose(target_pose, 0.4, 0.6, 0.001, 1.0, 0.0, 0.0, 0.0);
+  make_pose(target_pose, 0.4, 0.6, 0.002, 1.0, 0.0, 0.0, 0.0);
   move_group_interface.setPoseTarget(target_pose);
   ok = static_cast<bool>(move_group_interface.move());
   if (!ok) {
@@ -209,7 +209,7 @@ int main(int argc, char * argv[])
 
   RCLCPP_INFO(logger, "Move to above position to drop object");
 
-  make_pose(target_pose, 0.6, 0.4, 0.0025, 1.0, 0.0, 0.0, 0.0);
+  make_pose(target_pose, 0.6, 0.4, 0.002, 1.0, 0.0, 0.0, 0.0);
   move_group_interface.setPoseTarget(target_pose);
   ok = static_cast<bool>(move_group_interface.move());
 
@@ -235,6 +235,14 @@ int main(int argc, char * argv[])
   result_future = action_client->async_get_result(goal_handle);
   result_future.get();   // stalled/reached_goal 결과가 올 때까지 대기
 
+  move_group_interface.setNamedTarget("test_configuration");
+  
+  // 시작 위치로 이동
+  ok = static_cast<bool>(move_group_interface.move());
+  if (!ok) {
+    RCLCPP_ERROR(logger, "Move back to 'test_configuration' failed");
+    return finish(-1, spinner);
+  }
 
   rclcpp::shutdown();
   // 스핀 스레드를 정리하고 종료.
