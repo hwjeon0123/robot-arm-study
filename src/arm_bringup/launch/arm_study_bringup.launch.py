@@ -4,6 +4,7 @@ from launch.actions import (
     IncludeLaunchDescription,
     OpaqueFunction,
     RegisterEventHandler,
+    SetEnvironmentVariable,
 )
 from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit
@@ -77,7 +78,16 @@ def generate_launch_description():
         ],
     )
 
-    # 픽업용 대상물 생성 (위치/자세는 board.sdf의 <pose>에 있음)
+    # Gazebo 가 SDF 안의 model:// URI 를 해석할 때 뒤지는 경로.
+    # 지정하지 않으면 board/model.sdf 의 텍스처(model://board/materials/...)를
+    # 찾지 못해 마커가 회색 판으로 나온다. Gazebo 기동 전에 설정돼야 하므로
+    # LaunchDescription 목록의 맨 앞에 둔다.
+    set_gz_resource_path = SetEnvironmentVariable(
+        name="GZ_SIM_RESOURCE_PATH",
+        value=PathJoinSubstitution([FindPackageShare("arm_bringup"), "models"]),
+    )
+
+    # 픽업용 대상물 생성 (위치/자세는 아래 -x/-y/-z 로 지정)
     board_spawn_entity = Node(
         package="ros_gz_sim",
         executable="create",
@@ -85,7 +95,7 @@ def generate_launch_description():
         arguments=[
             "-file",
             PathJoinSubstitution(
-                [FindPackageShare("arm_bringup"), "models", "board.sdf"]
+                [FindPackageShare("arm_bringup"), "models", "board", "model.sdf"]
             ),
             "-name",
             "board",
@@ -124,6 +134,7 @@ def generate_launch_description():
 )
 
     return LaunchDescription([
+        set_gz_resource_path,
         DeclareLaunchArgument("ur_type", default_value="ur5e"),
         DeclareLaunchArgument("use_sim_time", default_value="true"),
         DeclareLaunchArgument("gazebo_gui", default_value="true"),

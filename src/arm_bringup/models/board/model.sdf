@@ -1,0 +1,81 @@
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <!-- 픽업용 대상물. PCB 를 올린 캐리어 플레이트로 가정한 얇은 판.
+       크기: 60 x 40 x 5mm.
+         - 짧은 변 40mm 는 그리퍼 최대 개방폭 50mm 안에 들어간다 (양쪽 5mm 여유).
+         - 긴 변 60mm 는 윗면에 마커를 올릴 면적을 확보하기 위한 것이다.
+       질량이 작아서 손가락 effort(20N) 대비 마찰만으로 붙잡힌다. -->
+  <model name="board">
+    <!-- pose 속성은 ros_gz_sim create 에 -file 로 넘겨 스폰하는 경우
+         영향을 미치지 않는다. Launch 에서 -x/-y/-z/-R/-P/-Y 로 지정한다. -->
+    <pose>0.4 0.6 0.0025 0 0 0</pose>
+    <link name="board_link">
+      <inertial>
+        <mass>0.02</mass>
+        <!-- 직육면체 관성 I = m(a^2 + b^2) / 12, m=0.02, x=0.06 y=0.04 z=0.005 -->
+        <inertia>
+          <ixx>2.708e-6</ixx>   <!-- m(y^2 + z^2)/12 -->
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>6.042e-6</iyy>   <!-- m(x^2 + z^2)/12 -->
+          <iyz>0</iyz>
+          <izz>8.667e-6</izz>   <!-- m(x^2 + y^2)/12 -->
+        </inertia>
+      </inertial>
+
+      <visual name="visual">
+        <geometry>
+          <box><size>0.06 0.04 0.005</size></box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.6 0.1 1</ambient>
+          <diffuse>0.1 0.6 0.1 1</diffuse>
+        </material>
+      </visual>
+
+      <!-- ArUco 마커 (DICT_4X4_50, ID 0).
+           보드 윗면(z=0.0025)보다 0.1mm 위에 둔다. 같은 높이에 두면 두 면이
+           겹쳐 깜빡이는 z-fighting 이 생긴다.
+           판 36mm 중 검은 마커 본체는 27mm 다 (PNG 의 3/4 이 마커, 나머지는
+           검출에 필요한 흰 여백). 자세 추정 코드에는 27mm 를 넘겨야 한다.
+           collision 은 넣지 않는다 — 마커는 그림일 뿐이고, 충돌을 붙이면
+           그리퍼가 보드가 아니라 이 판에 닿는다. -->
+      <visual name="marker">
+        <pose>0 0 0.0026 0 0 0</pose>
+        <geometry>
+          <box><size>0.036 0.036 0.0002</size></box>
+        </geometry>
+        <material>
+          <!-- 마커는 인쇄물에 가까운 비금속 표면이다. metalness 를 0 으로 두지
+               않으면 금속으로 렌더링되는데, 금속은 확산 반사가 없어 반사할
+               환경(스카이박스, 환경맵)이 없는 이 월드에서는 검게 보인다.
+               roughness 를 높여 정반사도 억제한다. -->
+          <ambient>1 1 1 1</ambient>
+          <diffuse>1 1 1 1</diffuse>
+          <specular>0 0 0 1</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://board/materials/textures/aruco_4x4_id0.png</albedo_map>
+              <metalness>0.0</metalness>
+              <roughness>0.9</roughness>
+            </metal>
+          </pbr>
+        </material>
+      </visual>
+
+      <collision name="collision">
+        <geometry>
+          <box><size>0.06 0.04 0.005</size></box>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>1.0</mu>
+              <mu2>1.0</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+    </link>
+  </model>
+</sdf>
