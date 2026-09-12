@@ -138,7 +138,13 @@ def generate_launch_description():
         DeclareLaunchArgument("ur_type", default_value="ur5e"),
         DeclareLaunchArgument("use_sim_time", default_value="true"),
         DeclareLaunchArgument("gazebo_gui", default_value="true"),
-        DeclareLaunchArgument("world_file", default_value="default.sdf"),
+        # world 파일을 새로 생성한 파일로 변경
+        DeclareLaunchArgument(
+            "world_file",
+            default_value=PathJoinSubstitution(
+                [FindPackageShare("arm_bringup"), "worlds", "arm_study.sdf"]
+            ),
+        ),
         robot_state_publisher_node,
         clock_bridge,
         gz_spawn_entity,
