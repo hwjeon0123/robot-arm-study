@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro">
+   <!--- 카메라는 굳이 그릴 필요가 없기 때문에 정의만 한다. 충돌도 없는 것으로 -->
+   <link name="overhead_camera_link">
+      <inertial>
+        <mass value="0.1"/>
+        <inertia ixx="0.00001" ixy="0.0" ixz="0.0" iyy="0.00001" iyz="0.0" izz="0.00001"/>
+      </inertial>
+   </link>
+
+   <link name="overhead_camera_link_optical"/>
+ 
+  <joint name="overhead_camera_joint" type="fixed">
+     <parent link="base_link"/>
+     <child link="overhead_camera_link"/>
+     <!-- 카메라 위치와 방향 설정: 여기에서 카메라의 좌표계는 물리적 좌표계이며 
+      ROS의 좌표계를 따른다. 따라서, 카메라 렌즈 방향이 X축이다. 
+      대상물이 다 보일 수 있도록 X, Y, Z값을 정하고 렌즈가 아래를 향하도록 Y축을 중심으로 90도 회전시킨다. 
+     -->
+     <origin xyz="0.5 0.5 1.0" rpy="0 1.5708 0"/>
+  </joint>
+
+  <joint name="overhead_camera_joint_optical" type="fixed">
+     <parent link="overhead_camera_link"/>
+     <child link="overhead_camera_link_optical"/>
+      <!-- 카메라 렌즈의 물리 좌표계(ROS)와 카메라의 광학 좌표계를 일치시킨다.
+        따라서, ROS 좌표계와 맞추기 위해 roll과 yaw축을 기준으로 각각 -90도 회전시킨다. 
+        (참고로 ROS는 고정된 월드 축을 기준으로 Roll(X) ➔ Pitch(Y) ➔ Yaw(Z) 순서로 회전한다
+        하지만, 카메라 좌표계(이동축)을 기준으로 회전하는 Yaw(Z) ➔ Pitch(Y) ➔ Roll(X) 경우 순서로 회전한다.)
+      -->
+     <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708"/>
+  </joint>
+
+  <gazebo reference="overhead_camera_link">
+    <sensor name="overhead_camera" type="camera">
+      <always_on>true</always_on>
+      <update_rate>30.0</update_rate>
+      <camera>
+        <horizontal_fov>0.768</horizontal_fov>
+        <!-- camera_info 메시지 헤더의 frame_id를 설정. 이렇게 해야 어느 프레임을 기준으로 
+         수신한 영상을 해석할 지 알 수 있다. -->
+        <optical_frame_id>overhead_camera_link_optical</optical_frame_id>
+        <image>
+          <width>1280</width>
+          <height>720</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.1</near>
+          <far>100</far>
+        </clip>
+      </camera>
+    </sensor>
+   </gazebo>
+
+</robot>

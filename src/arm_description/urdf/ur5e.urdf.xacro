@@ -10,6 +10,7 @@
   <xacro:include filename="$(find ur_description)/urdf/ur_macro.xacro"/>
   <xacro:include filename="$(find arm_description)/urdf/arm_study.ros2_control.xacro"/>
   <xacro:include filename="$(find arm_description)/urdf/arm_gripper.urdf.xacro"/>
+  <xacro:include filename="$(find arm_description)/urdf/overhead_camera.xacro"/>
   
   <!-- ③ 로봇별 파라미터 yaml 4종 경로 (ur_type에 따라 자동 선택) -->
   <xacro:arg name="joint_limit_params" default="$(find ur_description)/config/$(arg ur_type)/joint_limits.yaml"/>
