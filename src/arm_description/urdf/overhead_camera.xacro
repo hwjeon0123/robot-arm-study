@@ -1,13 +1,13 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://wiki.ros.org/xacro">
-   <!--- 카메라는 굳이 그릴 필요가 없기 때문에 정의만 한다. 충돌도 없는 것으로 -->
+   <!--- 카메라 링크는 inertial 속성이 있어야 SDF에서 정상적으로 작동한다. -->
    <link name="overhead_camera_link">
       <inertial>
         <mass value="0.1"/>
         <inertia ixx="0.00001" ixy="0.0" ixz="0.0" iyy="0.00001" iyz="0.0" izz="0.00001"/>
       </inertial>
    </link>
-
+   <!-- 카메라 광학 축을 위한 링크. inertial 속성은 없어도 관계 없다.-->
    <link name="overhead_camera_link_optical"/>
  
   <joint name="overhead_camera_joint" type="fixed">
@@ -34,9 +34,12 @@
   <gazebo reference="overhead_camera_link">
     <sensor name="overhead_camera" type="camera">
       <always_on>true</always_on>
+      <!-- 토픽 이름을 2계층 이상으로 설정하여 카메라가 여러 개 있을 때 구분할 수 있도록 한다. -->
+      <topic>overhead_camera/image_raw</topic>
       <update_rate>30.0</update_rate>
       <camera>
-        <horizontal_fov>0.768</horizontal_fov>
+        <!-- 1m 높이에서 화각 40도 -->
+        <horizontal_fov>0.698</horizontal_fov>
         <!-- camera_info 메시지 헤더의 frame_id를 설정. 이렇게 해야 어느 프레임을 기준으로 
          수신한 영상을 해석할 지 알 수 있다. -->
         <optical_frame_id>overhead_camera_link_optical</optical_frame_id>

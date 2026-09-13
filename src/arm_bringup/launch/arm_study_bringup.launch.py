@@ -127,11 +127,26 @@ def generate_launch_description():
     )
 
     clock_bridge = Node(
-    package="ros_gz_bridge",
-    executable="parameter_bridge",
-    arguments=["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"],
-    output="screen",
-)
+        package="ros_gz_bridge",
+        executable="parameter_bridge",
+        arguments=["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"],
+        output="screen",
+    )
+
+    overhead_camera_image_bridge = Node(
+        package="ros_gz_image",
+        executable="image_bridge",
+        arguments=["/overhead_camera/image_raw"],
+        output="screen",
+    )
+
+    overhead_camera_info_bridge = Node(
+        name="overhead_camera_info_gz_bridge",
+        package="ros_gz_bridge",
+        executable="parameter_bridge",
+        arguments=["/overhead_camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo"],
+        output="screen",
+    )
 
     return LaunchDescription([
         set_gz_resource_path,
@@ -147,6 +162,8 @@ def generate_launch_description():
         ),
         robot_state_publisher_node,
         clock_bridge,
+        overhead_camera_image_bridge,
+        overhead_camera_info_bridge,
         gz_spawn_entity,
         board_spawn_entity,
         joint_state_broadcaster_spawner,
