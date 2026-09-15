@@ -2,7 +2,7 @@
 
 UR5e 시뮬레이션 구축 중 발생한 장애의 진단 기록.
 
-**요약** — RViz에서 Plan & Execute를 실행하였을 때 RViz의 로봇은 목적 경로로 움직이지만, Gazebo의 로봇은 멈춰 있음. 원인은 RViz에서 MoveIt을 통해 로봇의 궤적을 게라는 이름만 떠 있었다. 이름이 달라 명령이 도달하지 못했다.
+**요약** — RViz에서 Plan & Execute를 실행하였을 때 RViz의 로봇은 목적 경로로 움직이지만, Gazebo의 로봇은 멈춰 있음. 원인은 RViz에서 MoveIt을 통해 로봇의 궤적을 넘기는 컨트롤러 이름이 scaled_joint_trajectory_controller 인데 시뮬레이터에는 joint_trajectory_controller 만 떠 있었다. 
 
 ---
 
@@ -49,7 +49,7 @@ RViz와 Gazebo가 정상적으로 뜬다. Plan → Execute 하면 **RViz 속 팔
 
 ### 증상의 해석
 
-RViz의 `Planned Path`는 계산 결과를 재생하는 애니메이션이다. **실행 성공 여부와 무관하게 재생된다.** 계획서를 그려본 것이지 로봇이 움직인 기록이 아니다.
+RViz의 `Planned Path`는 계산 결과를 재생하는 애니메이션이다. 그래서 **로봇 제어 명령의 실행 성공 여부와 무관하다.**
 
 → 계산은 성공했고, 계산 결과가 JTC에게 전달되지 못했다. 위 그림의 **첫 화살표**가 끊겼다.
 
@@ -65,9 +65,11 @@ $ ros2 action list | grep follow_joint_trajectory
 /scaled_joint_trajectory_controller/follow_joint_trajectory
 ```
 
-둘 다 보이지만 **이건 판정 근거가 못 된다.** 이 명령은 토픽 흔적을 스캔하는데, 흔적은 명령을 받는 쪽(서버)뿐 아니라 보내는 쪽(클라이언트)도 남긴다. 서버가 없어도 목록에는 뜬다.
+액션 목록에 두 컨트롤러의 액션이 모두 나타난다. 하지만 이 목록은 서버가 실제로 존재하는지는 알려주지 않는다. 서버든 클라이언트든 어느 한쪽 노드라도 DDS 네트워크에 통신용 엔드포인트를 등록하면 액션 목록에 나타난다.
 
 ### 확인 2 — 컨트롤러 목록 (판정 근거)
+
+아래 명령은 controller_manager에 직접 컨트롤러의 목록을 요청한다.
 
 ```
 $ ros2 control list_controllers
@@ -75,11 +77,11 @@ joint_trajectory_controller  ...  active
 joint_state_broadcaster      ...  active
 ```
 
-이 명령은 controller_manager에 직접 컨트로러의 목록을 요청한다. **`scaled_joint_trajectory_controller`는 없다.** 즉, MoveIt은 존재하지 않는 컨트롤러를 부르고 있었다.
+ **`scaled_joint_trajectory_controller`는 없다.** 즉, MoveIt은 존재하지 않는 컨트롤러에 명령을 보내고 있는 것이다.
 
 ### 확인 3 — 하부 격리 시험
 
-MoveIt을 빼고 JTC에 직접 궤적을 던졌다.
+MoveIt을 빼고 JTC에 직접 궤적 명령을 보내 본다.
 
 ```bash
 ros2 topic pub -1 /joint_trajectory_controller/joint_trajectory \
@@ -97,7 +99,7 @@ ros2 topic pub -1 /joint_trajectory_controller/joint_trajectory \
 
 ## 3. 해결 방안 모색
 
-### 왜 어긋났는가
+### 왜 제대로 동작하지 않았는가
 
 `ur_moveit_config`는 원래 **실물 UR 로봇용** 패키지다. 실물 드라이버는 UR 티치펜던트의 속도 노브에 연동되는 `scaled_joint_trajectory_controller`를 띄우므로, 기본값이 그쪽으로 잡혀 있다.
 
@@ -113,7 +115,7 @@ ros2 topic pub -1 /joint_trajectory_controller/joint_trajectory \
 | **B** | `arm_bringup`에서 파라미터를 덮어쓴다 | 업스트림 무손상. 런치 파일 작성 필요 |
 | **C** | 시뮬레이터에 scaled JTC를 추가로 띄운다 | 실물 전용 인터페이스에 의존해 로드 실패 예상 |
  
-A 방법을 적용해서 잘 동작하는지 확인. 이후 필요함면 B 방안까지 시행
+A 방법을 적용해서 잘 동작하는지 확인. 이후 필요하면 B 방안까지 시행
 
 ---
 
@@ -131,7 +133,7 @@ A 방법을 적용해서 잘 동작하는지 확인. 이후 필요함면 B 방�
     default: false       ← true 로
 ```
 
-워크 스페이스를 빌드 할 때 `--symlink-install`로 빌드되었다면 설치된 패키지는 소스를 가리키는 심볼릭 링크다.
+워크 스페이스를 빌드 할 때 `--symlink-install`로 빌드되었다면 설치된 패키지는 소스를 가리키는 심볼릭 링크여서 
 소스를 고치면 즉시 반영되므로 런치만 다시 실행하면 된다.
 
 ### 검증
@@ -143,7 +145,7 @@ A 방법을 적용해서 잘 동작하는지 확인. 이후 필요함면 B 방�
    ```
 
 2. `move_group` 로그에서 `Action client not connected` 경고가 **사라졌는지** 확인
-   - `Added FollowJointTrajectory controller for ...` 가 두 줄 나오는 건 정상 (등록은 둘 다 되고, 바뀐 건 **활성화 된 제어기*이다)
+   - `Added FollowJointTrajectory controller for ...` 가 두 줄 나오는 건 정상 (등록은 둘 다 되고, 바뀐 건 **활성화 된 제어기**이다)
 3. RViz에서 Plan → Execute
 
 ### 결과 (2026-08-08)
@@ -161,10 +163,3 @@ A 방법을 적용해서 잘 동작하는지 확인. 이후 필요함면 B 방�
 | 근본 이유 | 실물 로봇용 기본 설정을 시뮬레이터에 그대로 사용 |
 | 조치 | MoveIt의 기본 컨트롤러를 `joint_trajectory_controller`로 변경 |
 
-### 남은 부채
-
-**방안 B가 아직 적용되지 않았다.** 현재 수정은 업스트림 파일(`ur_moveit_config`)을 직접 고친 상태이므로, `git pull` 하면 사라지고 증상이 재발한다. `arm_bringup`에서 파라미터를 덮어쓰는 구조로 옮겨야 정착된다.
-
-### 다음 단계
-
-C++ 노드로 목표 좌표 전달 → Gazebo에 트레이·지그 도형 스폰 및 충돌 객체 등록 → 상태 머신으로 예외 처리 흐름 구성.

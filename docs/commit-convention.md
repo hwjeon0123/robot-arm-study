@@ -38,6 +38,7 @@
 | `description` | `src/arm_description` |
 | `bringup` | `src/arm_bringup` |
 | `control-app` | `src/arm_control_app` |
+| `vision` | `src/arm_vision` |
 | `readme` | `README.md` |
 | `docs` | `docs/` |
 
