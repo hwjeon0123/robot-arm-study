@@ -5,10 +5,13 @@
 #include "opencv2/aruco.hpp"
 #include "opencv2/core.hpp"
 #include "opencv2/imgproc.hpp" // cv::cvtColor() 사용을 위해 필요
-
+#include "sensor_msgs/msg/camera_info.hpp"
 #include <stdexcept>
 
 #define OVERHEAD_CAMERA_IMAGE_TOPIC "/overhead_camera/image_raw"
+
+// ArUco 마커의 길이를 상수로 정의. 
+static constexpr float MARKER_LENGTH = 0.027f;
 
 class ArmVisionSubscriber : public rclcpp::Node
 {
@@ -23,59 +26,58 @@ class ArmVisionSubscriber : public rclcpp::Node
             throw std::runtime_error("ArUco dictionary or detector parameters not created");
         }
 
-        try {
-        subscription_ = image_transport::create_subscription(
-            this, OVERHEAD_CAMERA_IMAGE_TOPIC,
-            [this](const sensor_msgs::msg::Image::ConstSharedPtr & msg) 
-            {
-                HandleImage(msg);
-            },
-            "raw");  // 나머지 두 매개변수는 기본값으로 두어도 된다. (QoS, callback 그룹)
+        /* 기본값은 CORNER_REFINE_NONE 이며 외곽선에서 얻은 정수에 가까운 좌표를 그대로 쓴다.
+         시뮬레이션에서 측정해 보니 마커 폭이 46.3px 로 잡혔는데 영상에서 직접 잰 경계는 46.79px 였다.
+         픽셀 계산의 정밀도 문제로 판단해 CORNER_REFINE_SUBPIX를 사용해서 정밀도를 높이니 46.72px 로 영상에 맞았다.
+         다만 이것으로 오차가 다 없어지지는 않았다. 27mm 마커라면 47.73px 여야 하는데 영상 자체가 46.79px 였다. 
+         이 오차는 렌더링 과정에서 검은 사각형이 실제보다 작게 그려져서 발생하는 것이어서 개선할 수 없다.
+         */
+        aruco_parameters_->cornerRefinementMethod = cv::aruco::CORNER_REFINE_SUBPIX;
 
-        } catch (const std::exception& e) {
+        try {
+        subscription_ = image_transport::create_camera_subscription(
+            this, OVERHEAD_CAMERA_IMAGE_TOPIC,
+            [this](const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
+                    const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg) 
+            {
+                HandleImage(image_msg, info_msg);
+            },
+            "raw");  
+        } catch (const std::exception & e) {
             RCLCPP_ERROR(this->get_logger(), "Failed to subscribe %s: %s",
                              OVERHEAD_CAMERA_IMAGE_TOPIC, e.what());
+            throw;
+        } catch (...) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to subscribe %s: Unknown exception",
+                             OVERHEAD_CAMERA_IMAGE_TOPIC);
             throw;
         }
     }
 
   private:
-    void HandleImage(const sensor_msgs::msg::Image::ConstSharedPtr& image_msg);
-    image_transport::Subscriber subscription_;
+    image_transport::CameraSubscriber subscription_;
     cv::Ptr<cv::aruco::Dictionary> cv_dict_;
     cv::Ptr<cv::aruco::DetectorParameters> aruco_parameters_;
     bool marker_detected_{false};
+    bool camera_info_received_{false};
+    cv::Matx33d camera_matrix_;
+    std::vector<double> dist_coeffs_;
     rclcpp::Clock steady_clock_{RCL_STEADY_TIME};
     rclcpp::Time last_log_{0, 0, RCL_STEADY_TIME};
+
+    void HandleImage(const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
+        const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg);
+    void DisplayMarker(cv::InputArray& image, 
+        std::vector<int>& ids, std::vector<std::vector<cv::Point2f>>& corners);
 };
 
-void ArmVisionSubscriber::HandleImage(const sensor_msgs::msg::Image::ConstSharedPtr& image_msg)
+
+void ArmVisionSubscriber::DisplayMarker(cv::InputArray& image, 
+    std::vector<int>& ids, std::vector<std::vector<cv::Point2f>>& corners)
 {
-    cv_bridge::CvImageConstPtr cv_const_ptr;
-    try {
-        // cv_bridge 로 ROS 메시지를 OpenCV Mat 으로 변환
-        // 마커 검출만 하려면 toCvShare() 를 사용, 이미지에 뭔가 수정을 한다면
-        // toCvCopy()를 사용`
-        // cv_bridge::CvImagePtr cv_ptr;
-        // cv_ptr =
-        //     cv_bridge::toCvCopy(image_msg, sensor_msgs::image_encodings::MONO8);
-        cv_const_ptr = cv_bridge::toCvShare(image_msg, "mono8");
-    } catch (cv_bridge::Exception &e) {
-        RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
-        return;
-    }
-
-    // Vectors to store detected marker corners and their IDs
-    std::vector<std::vector<cv::Point2f>> corners;
-    std::vector<int> ids;
-    
-    // Detect markers in the image frame
-    cv::aruco::detectMarkers(cv_const_ptr->image, cv_dict_, corners, ids,
-                             aruco_parameters_);
-
     // Convert the grayscale image to BGR for display purposes
     cv::Mat display;
-    cv::cvtColor(cv_const_ptr->image, display, cv::COLOR_GRAY2BGR);
+    cv::cvtColor(image, display, cv::COLOR_GRAY2BGR);
 
     // If any markers are found, draw bounding boxes and IDs on the frame
     if (!ids.empty()) {
@@ -111,6 +113,61 @@ void ArmVisionSubscriber::HandleImage(const sensor_msgs::msg::Image::ConstShared
 
     cv::imshow("view", display);
     cv::waitKey(10);
+}
+
+void ArmVisionSubscriber::HandleImage(const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
+    const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg)
+{
+    // Take camera info 
+    if (!camera_info_received_) {
+        camera_matrix_ = cv::Matx33d(
+            info_msg->k[0], 0, info_msg->k[2],
+            0, info_msg->k[4], info_msg->k[5],
+            0, 0, 1
+        );
+        
+        dist_coeffs_ = std::vector<double>(info_msg->d);
+
+        camera_info_received_ = true;
+        RCLCPP_INFO(this->get_logger(), "Camera info received: fx=%f, fy=%f, cx=%f, cy=%f",
+                    camera_matrix_(0, 0), camera_matrix_(1, 1),
+                    camera_matrix_(0, 2), camera_matrix_(1, 2));
+    }
+
+    cv_bridge::CvImageConstPtr cv_const_ptr;
+    try {
+        // cv_bridge 로 ROS 메시지를 OpenCV Mat 으로 변환
+        // 마커 검출만 하려면 toCvShare() 를 사용, 이미지에 뭔가 수정을 한다면
+        // toCvCopy()를 사용`
+        // cv_bridge::CvImagePtr cv_ptr;
+        // cv_ptr =
+        //     cv_bridge::toCvCopy(image_msg, sensor_msgs::image_encodings::MONO8);
+        cv_const_ptr = cv_bridge::toCvShare(image_msg, "mono8");
+    } catch (cv_bridge::Exception &e) {
+        RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
+        return;
+    }
+
+    // Vectors to store detected marker corners and their IDs
+    std::vector<std::vector<cv::Point2f>> corners;
+    std::vector<int> ids;
+    std::vector<cv::Vec3d> rvecs, tvecs;
+    
+    // Detect markers in the image frame
+    cv::aruco::detectMarkers(cv_const_ptr->image, cv_dict_, corners, ids,
+                             aruco_parameters_);
+
+    DisplayMarker(cv_const_ptr->image, ids, corners);
+
+    cv::aruco::estimatePoseSingleMarkers(corners, MARKER_LENGTH, camera_matrix_, 
+        dist_coeffs_, rvecs, tvecs);
+    
+    if(tvecs.size() > 0) {
+        for(size_t i = 0; i < tvecs.size(); i++) {
+            RCLCPP_INFO(this->get_logger(), "Marker ID: %d, Position: [%.3f, %.3f, %.3f]",
+                        ids[i], tvecs[i][0], tvecs[i][1], tvecs[i][2]);
+        }
+    }
 }
 
 int main(int argc, char * argv[])
