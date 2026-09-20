@@ -11,6 +11,7 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <tf2_ros/transform_broadcaster.h>
 
 #include <stdexcept>
 #include <memory>
@@ -43,8 +44,10 @@ class ArmVisionSubscriber : public rclcpp::Node
         try {
             tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
             tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+            tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+
         } catch (const std::exception & e) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to create tf2 buffer or listener: %s", e.what());
+            RCLCPP_ERROR(this->get_logger(), "Failed to create tf2 buffer, listener or broadcaster: %s", e.what());
             throw;
         }
 
@@ -80,11 +83,17 @@ class ArmVisionSubscriber : public rclcpp::Node
     rclcpp::Time last_log_{0, 0, RCL_STEADY_TIME};
     std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
+    std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
     
     void HandleImage(const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
         const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg);
     void DisplayMarker(cv::InputArray& image, 
-        std::vector<int>& ids, std::vector<std::vector<cv::Point2f>>& corners);
+       std::vector<int>& ids, std::vector<std::vector<cv::Point2f>>& corners);
+    geometry_msgs::msg::TransformStamped MakeMarkerTransform(
+        const geometry_msgs::msg::TransformStamped & cam_to_base,
+        const std_msgs::msg::Header & header,
+        const int id,
+        const cv::Vec3d & tvec);
 };
 
 
@@ -168,6 +177,7 @@ void ArmVisionSubscriber::HandleImage(const sensor_msgs::msg::Image::ConstShared
     std::vector<std::vector<cv::Point2f>> corners;
     std::vector<int> ids;
     std::vector<cv::Vec3d> rvecs, tvecs;
+    geometry_msgs::msg::TransformStamped cam_to_base;
     
     // Detect markers in the image frame
     cv::aruco::detectMarkers(cv_const_ptr->image, cv_dict_, corners, ids,
@@ -180,50 +190,45 @@ void ArmVisionSubscriber::HandleImage(const sensor_msgs::msg::Image::ConstShared
 
     DisplayMarker(cv_const_ptr->image, ids, corners);
 
+    // rvecs는 마커가 각 축을 기준으로 얼마나 기울어져 있는지 나타내는 회전 벡터
+    // tvecs는 카메라 원점을 중심으로 마커가 어느 축으로 얼마나 이동해 있는지 나타내는 위치 벡터
     cv::aruco::estimatePoseSingleMarkers(corners, MARKER_LENGTH, camera_matrix_, 
         dist_coeffs_, rvecs, tvecs);
-    
-    if(tvecs.size() > 0) {
-        for(size_t i = 0; i < tvecs.size(); i++) {
-            RCLCPP_INFO(this->get_logger(), "Marker ID: %d, Position: [%.3f, %.3f, %.3f]",
-                        ids[i], tvecs[i][0], tvecs[i][1], tvecs[i][2]);
-        }
-    }
-
-    geometry_msgs::msg::TransformStamped tr_stamped;
-    geometry_msgs::msg::PoseStamped marker_pose_camera_frame;
-    geometry_msgs::msg::PoseStamped base_link_pose; // Initialize with default values
-
-    marker_pose_camera_frame.header = image_msg->header;
-    marker_pose_camera_frame.pose.position.x = tvecs[0][0];
-    marker_pose_camera_frame.pose.position.y = tvecs[0][1];
-    marker_pose_camera_frame.pose.position.z = tvecs[0][2]; 
-    marker_pose_camera_frame.pose.orientation.x = 0.0;
-    marker_pose_camera_frame.pose.orientation.y = 0.0;
-    marker_pose_camera_frame.pose.orientation.z = 0.0;
-    marker_pose_camera_frame.pose.orientation.w = 1.0;
 
     try {
-
-        tr_stamped = tf_buffer_->lookupTransform(
-            "base_link", "overhead_camera_link_optical", 
-            image_msg->header.stamp,
-            rclcpp::Duration::from_seconds(0.1));
-
-    } catch (const tf2::TransformException & ex) {
+        // 카메라 좌표계와 로봇 좌표계 사이의 관계를 얻는다.
+        // 모든 마커에 대해서 계산할 필요없이 한 번만 구하면 된다.
+        cam_to_base = tf_buffer_->lookupTransform(
+            "base_link", "overhead_camera_link_optical",
+            image_msg->header.stamp, rclcpp::Duration::from_seconds(0.1));
+    } catch (const tf2::TransformException &ex) {
         RCLCPP_INFO(this->get_logger(),
-            "Could not transform base_link to overhead_camera_link_optical: %s",
-            ex.what());
+        "Could not transform base_link to "
+        "overhead_camera_link_optical: %s",
+        ex.what());
         return;
     }
-    
-    tf2::doTransform(marker_pose_camera_frame, base_link_pose, tr_stamped);
 
+    std::vector<geometry_msgs::msg::TransformStamped> transforms;
 
-    RCLCPP_INFO(this->get_logger(), 
-        "base_link pose: %f, %f, %f", base_link_pose.pose.position.x,
-        base_link_pose.pose.position.y, base_link_pose.pose.position.z);
+    // 각 마커 별로 변환 실행
+    for (size_t i = 0; i < tvecs.size(); i++) 
+    {
+        auto marker_tf = MakeMarkerTransform(cam_to_base, image_msg->header,
+                                             ids[i], tvecs[i]);
+        RCLCPP_INFO(this->get_logger(),
+                    "Marker ID: %d, base_link pose: [%.3f, %.3f, %.3f]", ids[i],
+                    marker_tf.transform.translation.x,
+                    marker_tf.transform.translation.y,
+                    marker_tf.transform.translation.z);
 
+        transforms.push_back(marker_tf);
+    }
+
+    // 전체 발행
+    if (!transforms.empty()) {
+        tf_broadcaster_->sendTransform(transforms);
+    }
 }
 
 int main(int argc, char * argv[])
@@ -246,4 +251,42 @@ int main(int argc, char * argv[])
     rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;
+}
+
+geometry_msgs::msg::TransformStamped ArmVisionSubscriber::MakeMarkerTransform(
+        const geometry_msgs::msg::TransformStamped & cam_to_base,
+        const std_msgs::msg::Header & header,
+        const int id,
+        const cv::Vec3d & tvec)
+{
+    geometry_msgs::msg::PoseStamped marker_pose_camera_frame;
+    geometry_msgs::msg::PoseStamped base_link_pose;
+
+    // 카메라 좌표계 값(cv::Vec3d)을 ROS 자료형인 geometry_msgs::msg::PoseStamped로 변경
+    // 지금 회전을 고려하지 않는 이유는 위치값 발행을 먼저 구현하고 그 다음 단계에서 회전까지 고려하려고 
+    // 하기 때문이다.
+    marker_pose_camera_frame.header = header;
+    marker_pose_camera_frame.pose.position.x = tvec[0];
+    marker_pose_camera_frame.pose.position.y = tvec[1];
+    marker_pose_camera_frame.pose.position.z = tvec[2];
+    marker_pose_camera_frame.pose.orientation.x = 0.0;
+    marker_pose_camera_frame.pose.orientation.y = 0.0;
+    marker_pose_camera_frame.pose.orientation.z = 0.0;
+    marker_pose_camera_frame.pose.orientation.w = 1.0;
+
+    // 카메라 기준 마커 위치를 로봇 기준 마커 위치로 변환
+    tf2::doTransform(marker_pose_camera_frame, base_link_pose, cam_to_base);
+
+    // 발행할 최종 TransformStamped 생성 및 채우기
+    // 프레임 아이디에 marker_ 와 id 번호를 조합한 이름 지정
+    geometry_msgs::msg::TransformStamped marker_tf;
+    marker_tf.header = base_link_pose.header;
+    marker_tf.child_frame_id = "marker_" + std::to_string(id);
+
+    marker_tf.transform.translation.x = base_link_pose.pose.position.x;
+    marker_tf.transform.translation.y = base_link_pose.pose.position.y;
+    marker_tf.transform.translation.z = base_link_pose.pose.position.z;
+    marker_tf.transform.rotation = base_link_pose.pose.orientation;
+
+    return marker_tf;
 }
