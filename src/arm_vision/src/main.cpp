@@ -18,6 +18,8 @@
 
 #define OVERHEAD_CAMERA_IMAGE_TOPIC "/overhead_camera/image_raw"
 
+#define LOG_SHOW_INTERVAL           1.0
+
 // ArUco 마커의 길이를 상수로 정의. 
 static constexpr float MARKER_LENGTH = 0.027f;
 
@@ -115,9 +117,10 @@ void ArmVisionSubscriber::DisplayMarker(cv::InputArray& image,
                         ids.size());
         }
 
-        auto diff_time = steady_clock_.now() - last_log_;
-        if (diff_time.seconds() > 2.0) {
-            last_log_ = steady_clock_.now();
+        static rclcpp::Time log_time{0, 0, RCL_STEADY_TIME};
+        auto diff_time = steady_clock_.now() - log_time;
+        if (diff_time.seconds() > LOG_SHOW_INTERVAL) {
+            log_time = steady_clock_.now();
             // Print the IDs of detected markers to the console
             std::ostringstream oss;
             size_t id_index = 0;
@@ -211,16 +214,29 @@ void ArmVisionSubscriber::HandleImage(const sensor_msgs::msg::Image::ConstShared
 
     std::vector<geometry_msgs::msg::TransformStamped> transforms;
 
+    static rclcpp::Time log_time{0, 0, RCL_STEADY_TIME};
+    bool print_log = false;
+    auto diff_time = steady_clock_.now() - log_time;
+    if (diff_time.seconds() > LOG_SHOW_INTERVAL) 
+    {
+        log_time = steady_clock_.now();
+        print_log = true;
+    }
+
     // 각 마커 별로 변환 실행
     for (size_t i = 0; i < tvecs.size(); i++) 
     {
         auto marker_tf = MakeMarkerTransform(cam_to_base, image_msg->header,
                                              ids[i], tvecs[i]);
-        RCLCPP_INFO(this->get_logger(),
-                    "Marker ID: %d, base_link pose: [%.3f, %.3f, %.3f]", ids[i],
-                    marker_tf.transform.translation.x,
-                    marker_tf.transform.translation.y,
-                    marker_tf.transform.translation.z);
+        
+        if(print_log)
+        {
+            RCLCPP_INFO(this->get_logger(),
+                "Marker ID: %d, base_link pose: [%.3f, %.3f, %.3f]", ids[i],
+                marker_tf.transform.translation.x,
+                marker_tf.transform.translation.y,
+                marker_tf.transform.translation.z);
+        }
 
         transforms.push_back(marker_tf);
     }
