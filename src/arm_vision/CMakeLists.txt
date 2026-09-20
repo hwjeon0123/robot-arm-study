@@ -13,6 +13,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 # OpenCV 패키지는 시스템 라이브러리 패키지
 find_package(OpenCV REQUIRED)
 find_package(ament_cmake_auto REQUIRED)
@@ -27,6 +28,7 @@ ament_target_dependencies(arm_vision
   image_transport
   geometry_msgs
   tf2_ros
+  tf2_geometry_msgs
 )
 
 #OpenCV 헤더 파일 경로 연결 (ROS 패키지가 아니므로 따로 연결 필요)

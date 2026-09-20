@@ -6,7 +6,14 @@
 #include "opencv2/core.hpp"
 #include "opencv2/imgproc.hpp" // cv::cvtColor() 사용을 위해 필요
 #include "sensor_msgs/msg/camera_info.hpp"
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <geometry_msgs/msg/point_stamped.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
+
 #include <stdexcept>
+#include <memory>
 
 #define OVERHEAD_CAMERA_IMAGE_TOPIC "/overhead_camera/image_raw"
 
@@ -25,7 +32,6 @@ class ArmVisionSubscriber : public rclcpp::Node
         if (!cv_dict_ || !aruco_parameters_) {
             throw std::runtime_error("ArUco dictionary or detector parameters not created");
         }
-
         /* 기본값은 CORNER_REFINE_NONE 이며 외곽선에서 얻은 정수에 가까운 좌표를 그대로 쓴다.
          시뮬레이션에서 측정해 보니 마커 폭이 46.3px 로 잡혔는데 영상에서 직접 잰 경계는 46.79px 였다.
          픽셀 계산의 정밀도 문제로 판단해 CORNER_REFINE_SUBPIX를 사용해서 정밀도를 높이니 46.72px 로 영상에 맞았다.
@@ -33,6 +39,14 @@ class ArmVisionSubscriber : public rclcpp::Node
          이 오차는 렌더링 과정에서 검은 사각형이 실제보다 작게 그려져서 발생하는 것이어서 개선할 수 없다.
          */
         aruco_parameters_->cornerRefinementMethod = cv::aruco::CORNER_REFINE_SUBPIX;
+
+        try {
+            tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+            tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+        } catch (const std::exception & e) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to create tf2 buffer or listener: %s", e.what());
+            throw;
+        }
 
         try {
         subscription_ = image_transport::create_camera_subscription(
@@ -64,7 +78,9 @@ class ArmVisionSubscriber : public rclcpp::Node
     std::vector<double> dist_coeffs_;
     rclcpp::Clock steady_clock_{RCL_STEADY_TIME};
     rclcpp::Time last_log_{0, 0, RCL_STEADY_TIME};
-
+    std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
+    
     void HandleImage(const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
         const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg);
     void DisplayMarker(cv::InputArray& image, 
@@ -157,6 +173,11 @@ void ArmVisionSubscriber::HandleImage(const sensor_msgs::msg::Image::ConstShared
     cv::aruco::detectMarkers(cv_const_ptr->image, cv_dict_, corners, ids,
                              aruco_parameters_);
 
+    if (true == ids.empty()) 
+    {
+        return;  // No markers detected, exit callback
+    }
+
     DisplayMarker(cv_const_ptr->image, ids, corners);
 
     cv::aruco::estimatePoseSingleMarkers(corners, MARKER_LENGTH, camera_matrix_, 
@@ -168,6 +189,41 @@ void ArmVisionSubscriber::HandleImage(const sensor_msgs::msg::Image::ConstShared
                         ids[i], tvecs[i][0], tvecs[i][1], tvecs[i][2]);
         }
     }
+
+    geometry_msgs::msg::TransformStamped tr_stamped;
+    geometry_msgs::msg::PoseStamped marker_pose_camera_frame;
+    geometry_msgs::msg::PoseStamped base_link_pose; // Initialize with default values
+
+    marker_pose_camera_frame.header = image_msg->header;
+    marker_pose_camera_frame.pose.position.x = tvecs[0][0];
+    marker_pose_camera_frame.pose.position.y = tvecs[0][1];
+    marker_pose_camera_frame.pose.position.z = tvecs[0][2]; 
+    marker_pose_camera_frame.pose.orientation.x = 0.0;
+    marker_pose_camera_frame.pose.orientation.y = 0.0;
+    marker_pose_camera_frame.pose.orientation.z = 0.0;
+    marker_pose_camera_frame.pose.orientation.w = 1.0;
+
+    try {
+
+        tr_stamped = tf_buffer_->lookupTransform(
+            "base_link", "overhead_camera_link_optical", 
+            image_msg->header.stamp,
+            rclcpp::Duration::from_seconds(0.1));
+
+    } catch (const tf2::TransformException & ex) {
+        RCLCPP_INFO(this->get_logger(),
+            "Could not transform base_link to overhead_camera_link_optical: %s",
+            ex.what());
+        return;
+    }
+    
+    tf2::doTransform(marker_pose_camera_frame, base_link_pose, tr_stamped);
+
+
+    RCLCPP_INFO(this->get_logger(), 
+        "base_link pose: %f, %f, %f", base_link_pose.pose.position.x,
+        base_link_pose.pose.position.y, base_link_pose.pose.position.z);
+
 }
 
 int main(int argc, char * argv[])
