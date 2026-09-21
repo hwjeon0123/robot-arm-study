@@ -13,6 +13,9 @@ Remote access uses **Sunshine**. xrdp or VNC can't get GPU acceleration through,
 or RViz are effectively unusable over them. Sunshine spins up a virtual monitor with Xorg
 and streams the screen encoded on the GPU, so 3D acceleration is preserved.
 
+Each step is written up in detail as a [series](https://velog.io/@elder-node/series/로봇팔-픽앤플레이스-ROS-2에서-AI까지)
+on velog (Korean).
+
 ## Purpose
 
 The goal is to build "pick up an object and move it to a specified location" from the
@@ -42,7 +45,7 @@ The workspace has the following underlay/overlay structure.
 | | Contents | Location |
 |---|---|---|
 | Underlay | Upstream source for the UR driver, MoveIt 2, ros2_control, etc. | **Outside** this repo, at `../ur_ws` |
-| Overlay | 3 hand-written packages | `src/` in this repo |
+| Overlay | 4 hand-written packages | `src/` in this repo |
 
 The underlay is Universal Robots' ROS package source. My own code is built as an overlay on
 top of it.
@@ -70,8 +73,10 @@ robot-arm-study/                     ← this repo (overlay). ~/robot-arm-study 
 │   └── .containerignore
 ├── src/
 │   ├── arm_description/             shape — URDF/xacro, ros2_control declaration, SRDF
-│   ├── arm_bringup/                 execution — launch files, controller/MoveIt config
-│   └── arm_control_app/             application — C++ MoveGroupInterface node
+│   ├── arm_bringup/                 execution — launch, controller/MoveIt config, world, object model
+│   ├── arm_control_app/             application — C++ MoveGroupInterface node
+│   └── arm_vision/                  vision — ArUco detection and pose estimation
+├── tools/                           helper scripts (ArUco marker image generation, etc.)
 └── docs/                            debugging notes, conventions
 ```
 
@@ -170,17 +175,20 @@ source install/setup.bash
 Because it's installed with `--symlink-install`, edits to launch/yaml/xacro files take
 effect immediately without a rebuild.
 
-### 5. Run (3 terminals)
+### 5. Run (4 terminals)
 
 ```bash
-# 1) Gazebo + controllers
+# 1) Gazebo + controllers + camera bridge
 ros2 launch arm_bringup arm_study_bringup.launch.py
 
 # 2) MoveIt + RViz
 ros2 launch arm_bringup move_group.launch.py
 
-# 3) Application node — moves to the "home" pose from code
+# 3) Application node — one full pick-and-place cycle
 ros2 run arm_control_app arm_control_app
+
+# 4) Vision node — ArUco detection and marker frame broadcast
+ros2 run arm_vision arm_vision --ros-args -p use_sim_time:=true
 ```
 
 ## Progress
@@ -196,10 +204,10 @@ Organized in learning order.
 | 5. Controller config and activation | `joint_state_broadcaster` + `joint_trajectory_controller` in `arm_controllers.yaml`. Activated via spawner, checked status with `ros2 control list_controllers`. Confirmed the arm actually moves by injecting a trajectory directly from the command line | Done |
 | 6. SRDF and MoveIt integration | Wrote the SRDF (collision-pair list reused from `ur_moveit_config`), `move_group` launch. Controlled the Gazebo arm via RViz's Plan/Execute | Done |
 | 7. C++ application node | `MoveGroupInterface`: `setNamedTarget("home")` → `setPoseTarget`. Controlled directly from code, without RViz | Done |
-| 8. Gripper | Added a parallel gripper shape (2-axis prismatic) on `tool0` | **In progress** |
-| 9. Pick-up cycle | Cycle through supply tray → jig → discharge tray, performing an actual pick/place | Planned |
-| 10. Orientation judgement and branching | Judge whether the board's orientation is correct; seat it in the jig if so, flip and retry if not. Handled as a state machine, since the flow branches on the result | Planned |
-| 11. Vision | Recognize the board's position and orientation with a camera. Start with ArUco markers, designed so it can be swapped for YOLO later | Planned |
+| 8. Gripper | Added a parallel gripper (2-axis prismatic) on `tool0`. The two fingers are linked with a mimic joint, and a dedicated controller is split out so the gripper opens and closes through an action client | Done |
+| 9. Pick-and-place cycle | Approach → descend → grasp → move → release → return, run in order from the application node | Done |
+| 10. Vision | Put an ArUco marker on the object and mounted a camera above the workbench. The detected marker's pose is broadcast as a TF frame relative to `base_link` | **In progress** |
+| 11. Orientation judgement and branching | Judge whether the board's orientation is correct; seat it in the jig if so, flip and retry if not. Handled as a state machine, since the flow branches on the result | Planned |
 | 12. Applying AI | Check whether the robot can adapt to changing board/jig shapes without editing robot parameters | Planned |
 
 The git repository was created partway through step 8. So the results of steps 1-7 are all

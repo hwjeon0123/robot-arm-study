@@ -13,6 +13,8 @@ Headless Ubuntu에 Podman 컨테이너 환경을 기반으로 하고 Nvidia grap
 실질적으로 돌릴 수 없기 때문이다. Sunshine은 가상 모니터로 Xorg를 띄우고 화면을 GPU로
 인코딩해 스트리밍하므로 3차원 가속이 유지된다.
 
+각 단계의 자세한 과정은 velog 에 [연재](https://velog.io/@elder-node/series/로봇팔-픽앤플레이스-ROS-2에서-AI까지)로 정리하고 있다.
+
 ## 학습 목적
 
 "물건을 집어 지정된 위치로 옮긴다"를 직접 구성해 보는 것이 목적이다. 이미 만들어져 
@@ -40,7 +42,7 @@ Headless Ubuntu에 Podman 컨테이너 환경을 기반으로 하고 Nvidia grap
 | | 내용 | 위치 |
 |---|---|---|
 | 언더레이 | UR 드라이버, MoveIt 2, ros2_control 등 업스트림 소스 | 이 저장소 **밖** `../ur_ws` |
-| 오버레이 | 직접 작성한 패키지 3개 | 이 저장소 `src/` |
+| 오버레이 | 직접 작성한 패키지 4개 | 이 저장소 `src/` |
 
 언더레이는 Universal Robots의 ROS 패키지 소스이다. 이 패키지 소스를 활용하여 내가 작성한
 코드를 오버레이 형태로 사용한다.
@@ -67,8 +69,10 @@ robot-arm-study/                     ← 이 저장소 (오버레이). 컨테이
 │   └── .containerignore
 ├── src/
 │   ├── arm_description/             형상 — URDF/xacro, ros2_control 선언, SRDF
-│   ├── arm_bringup/                 실행 — launch, 컨트롤러/MoveIt 설정
-│   └── arm_control_app/             응용 — C++ MoveGroupInterface 노드
+│   ├── arm_bringup/                 실행 — launch, 컨트롤러/MoveIt 설정, 월드, 대상물 모델
+│   ├── arm_control_app/             응용 — C++ MoveGroupInterface 노드
+│   └── arm_vision/                  비전 — ArUco 검출과 자세 추정
+├── tools/                           보조 스크립트 (ArUco 마커 이미지 생성 등)
 └── docs/                            디버깅 기록, 규칙
 ```
 
@@ -164,17 +168,20 @@ source install/setup.bash
 `--symlink-install` 옵션으로 설치하기 때문에 launch/yaml/xacro 수정은 다시 빌드할 
 필요없이 곧바로 반영된다.
 
-### 5. 실행 (터미널 3개)
+### 5. 실행 (터미널 4개)
 
 ```bash
-# 1) Gazebo + 컨트롤러
+# 1) Gazebo + 컨트롤러 + 카메라 브리지
 ros2 launch arm_bringup arm_study_bringup.launch.py
 
 # 2) MoveIt + RViz
 ros2 launch arm_bringup move_group.launch.py
 
-# 3) 응용 노드 — 코드에서 "home" 자세로 이동
+# 3) 응용 노드 — 픽앤플레이스 한 바퀴
 ros2 run arm_control_app arm_control_app
+
+# 4) 비전 노드 — ArUco 검출과 마커 프레임 발행
+ros2 run arm_vision arm_vision --ros-args -p use_sim_time:=true
 ```
 
 ## 진행 단계
@@ -190,10 +197,10 @@ ros2 run arm_control_app arm_control_app
 | 5. 컨트롤러 설정과 활성화 | `arm_controllers.yaml`에 `joint_state_broadcaster` + `joint_trajectory_controller`. 스포너로 활성화한 뒤 `ros2 control list_controllers`로 상태 확인. 명령줄에서 궤적을 직접 주입해 팔이 실제로 움직이는 것까지 확인 | 완료 |
 | 6. SRDF와 MoveIt 연동 | SRDF 작성(충돌쌍 목록은 `ur_moveit_config`에서 재사용), `move_group` 런치. RViz의 Plan/Execute로 Gazebo 팔 제어 | 완료 |
 | 7. C++ 응용 노드 | `MoveGroupInterface`로 `setNamedTarget("home")` → `setPoseTarget`. RViz 없이 코드에서 직접 제어 | 완료 |
-| 8. 그리퍼 | `tool0`에 평행 그리퍼(prismatic 2축) 형상 추가 | **진행 중** |
-| 9. 픽업 사이클 | 공급 트레이 → 지그 → 배출 트레이를 순회하며 실제 pick/place 수행 | 예정 |
-| 10. 정방향 판별과 분기 | 기판 방향이 맞는지 판단해 맞으면 지그에 안착, 틀리면 돌려서 재시도. 결과에 따라 갈라지는 흐름이라 상태 머신으로 처리 | 예정 |
-| 11. 비전 | 카메라로 기판의 위치와 방향 인식. ArUco 마커로 시작해 추후 YOLO로 교체 가능하게 설계 | 예정 |
+| 8. 그리퍼 | `tool0`에 평행 그리퍼(prismatic 2축) 추가. mimic 조인트로 두 손가락을 연동하고 전용 컨트롤러를 분리해 액션 클라이언트로 개폐 | 완료 |
+| 9. 픽앤플레이스 사이클 | 접근 → 하강 → 파지 → 이동 → 해제 → 복귀를 응용 노드에서 순서대로 수행 | 완료 |
+| 10. 비전 | 대상물에 ArUco 마커를 붙이고 작업대 상부에 카메라 설치. 검출한 마커의 자세를 구해 `base_link` 기준 TF 프레임으로 발행 | **진행 중** |
+| 11. 정방향 판별과 분기 | 기판 방향이 맞는지 판단해 맞으면 지그에 안착, 틀리면 돌려서 재시도. 결과에 따라 갈라지는 흐름이라 상태 머신으로 처리 | 예정 |
 | 12. AI 적용 | 기판·지그 형태가 바뀌어도 로봇 파라미터를 고치지 않고 대응 가능한지 확인 | 예정 |
 
 git 저장소는 8단계 도중에 만들었다. 그래서 1~7단계의 결과물은 최초 커밋에 한꺼번에
