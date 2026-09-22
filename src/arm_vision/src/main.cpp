@@ -12,9 +12,12 @@
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <tf2_ros/transform_broadcaster.h>
+#include "opencv2/core/quaternion.hpp"
 
 #include <stdexcept>
 #include <memory>
+
+#include "arm_common/log_throttle.hpp"
 
 #define OVERHEAD_CAMERA_IMAGE_TOPIC "/overhead_camera/image_raw"
 
@@ -81,21 +84,29 @@ class ArmVisionSubscriber : public rclcpp::Node
     bool camera_info_received_{false};
     cv::Matx33d camera_matrix_;
     std::vector<double> dist_coeffs_;
-    rclcpp::Clock steady_clock_{RCL_STEADY_TIME};
-    rclcpp::Time last_log_{0, 0, RCL_STEADY_TIME};
+    LogThrottle disp_marker_throttle{LOG_SHOW_INTERVAL};
+    LogThrottle disp_transform_throttle{LOG_SHOW_INTERVAL};
     std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
     std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
     
     void HandleImage(const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
         const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg);
+    void StoreCamerInfo(const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg);
     void DisplayMarker(cv::InputArray& image, 
        std::vector<int>& ids, std::vector<std::vector<cv::Point2f>>& corners);
     geometry_msgs::msg::TransformStamped MakeMarkerTransform(
         const geometry_msgs::msg::TransformStamped & cam_to_base,
         const std_msgs::msg::Header & header,
         const int id,
-        const cv::Vec3d & tvec);
+        const cv::Vec3d & tvec,
+        const cv::Vec3d & rvec);
+    void PublishMarkerTransforms(
+        const geometry_msgs::msg::TransformStamped & cam_to_base,
+        const std_msgs::msg::Header & header,
+        const std::vector<int> & ids,
+        const std::vector<cv::Vec3d> & tvecs,
+        const std::vector<cv::Vec3d> & rvecs);
 };
 
 
@@ -117,10 +128,7 @@ void ArmVisionSubscriber::DisplayMarker(cv::InputArray& image,
                         ids.size());
         }
 
-        static rclcpp::Time log_time{0, 0, RCL_STEADY_TIME};
-        auto diff_time = steady_clock_.now() - log_time;
-        if (diff_time.seconds() > LOG_SHOW_INTERVAL) {
-            log_time = steady_clock_.now();
+        if (disp_marker_throttle.Due()) {
             // Print the IDs of detected markers to the console
             std::ostringstream oss;
             size_t id_index = 0;
@@ -143,10 +151,8 @@ void ArmVisionSubscriber::DisplayMarker(cv::InputArray& image,
     cv::waitKey(10);
 }
 
-void ArmVisionSubscriber::HandleImage(const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
-    const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg)
+void ArmVisionSubscriber::StoreCamerInfo(const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg)
 {
-    // Take camera info 
     if (!camera_info_received_) {
         camera_matrix_ = cv::Matx33d(
             info_msg->k[0], 0, info_msg->k[2],
@@ -161,15 +167,55 @@ void ArmVisionSubscriber::HandleImage(const sensor_msgs::msg::Image::ConstShared
                     camera_matrix_(0, 0), camera_matrix_(1, 1),
                     camera_matrix_(0, 2), camera_matrix_(1, 2));
     }
+}
+
+void ArmVisionSubscriber::PublishMarkerTransforms(
+    const geometry_msgs::msg::TransformStamped & cam_to_base,
+    const std_msgs::msg::Header & header,
+    const std::vector<int> & ids,
+    const std::vector<cv::Vec3d> & tvecs,
+    const std::vector<cv::Vec3d> & rvecs)
+{
+    std::vector<geometry_msgs::msg::TransformStamped> transforms;
+
+    static rclcpp::Time log_time{0, 0, RCL_STEADY_TIME};
+    bool print_log = disp_transform_throttle.Due();
+    
+    // 각 마커 별로 변환 실행
+    for (size_t i = 0; i < tvecs.size(); i++) 
+    {
+        auto marker_tf = MakeMarkerTransform(cam_to_base, header,
+                                             ids[i], tvecs[i], rvecs[i]);
+        
+        if(print_log)
+        {
+            RCLCPP_INFO(this->get_logger(),
+                "Marker ID: %d, base_link pose: [%.3f, %.3f, %.3f]", ids[i],
+                marker_tf.transform.translation.x,
+                marker_tf.transform.translation.y,
+                marker_tf.transform.translation.z);
+        }
+
+        transforms.push_back(marker_tf);
+    }
+
+    // 전체 발행
+    if (!transforms.empty()) {
+        tf_broadcaster_->sendTransform(transforms);
+    }
+}
+
+void ArmVisionSubscriber::HandleImage(const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
+    const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg)
+{
+    // Take camera info 
+    StoreCamerInfo(info_msg);
 
     cv_bridge::CvImageConstPtr cv_const_ptr;
     try {
         // cv_bridge 로 ROS 메시지를 OpenCV Mat 으로 변환
         // 마커 검출만 하려면 toCvShare() 를 사용, 이미지에 뭔가 수정을 한다면
         // toCvCopy()를 사용`
-        // cv_bridge::CvImagePtr cv_ptr;
-        // cv_ptr =
-        //     cv_bridge::toCvCopy(image_msg, sensor_msgs::image_encodings::MONO8);
         cv_const_ptr = cv_bridge::toCvShare(image_msg, "mono8");
     } catch (cv_bridge::Exception &e) {
         RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
@@ -195,6 +241,11 @@ void ArmVisionSubscriber::HandleImage(const sensor_msgs::msg::Image::ConstShared
 
     // rvecs는 마커가 각 축을 기준으로 얼마나 기울어져 있는지 나타내는 회전 벡터
     // tvecs는 카메라 원점을 중심으로 마커가 어느 축으로 얼마나 이동해 있는지 나타내는 위치 벡터
+    //
+    // 마커 평면의 법선과 시선이 이루는 각이 작으면, 즉 마커를 거의 정면에서 보면
+    // 수학적으로 해가 두 개 나올 수 있어 축이 가끔 뒤집힌다.
+    // ( https://github.com/opencv/opencv/issues/8813, https://arxiv.org/pdf/2103.09141 )
+    // 보드를 회전시켜서 마커의 축이 따라 돌면 회전이 제대로 반영된 것이다.
     cv::aruco::estimatePoseSingleMarkers(corners, MARKER_LENGTH, camera_matrix_, 
         dist_coeffs_, rvecs, tvecs);
 
@@ -212,39 +263,8 @@ void ArmVisionSubscriber::HandleImage(const sensor_msgs::msg::Image::ConstShared
         return;
     }
 
-    std::vector<geometry_msgs::msg::TransformStamped> transforms;
-
-    static rclcpp::Time log_time{0, 0, RCL_STEADY_TIME};
-    bool print_log = false;
-    auto diff_time = steady_clock_.now() - log_time;
-    if (diff_time.seconds() > LOG_SHOW_INTERVAL) 
-    {
-        log_time = steady_clock_.now();
-        print_log = true;
-    }
-
-    // 각 마커 별로 변환 실행
-    for (size_t i = 0; i < tvecs.size(); i++) 
-    {
-        auto marker_tf = MakeMarkerTransform(cam_to_base, image_msg->header,
-                                             ids[i], tvecs[i]);
-        
-        if(print_log)
-        {
-            RCLCPP_INFO(this->get_logger(),
-                "Marker ID: %d, base_link pose: [%.3f, %.3f, %.3f]", ids[i],
-                marker_tf.transform.translation.x,
-                marker_tf.transform.translation.y,
-                marker_tf.transform.translation.z);
-        }
-
-        transforms.push_back(marker_tf);
-    }
-
-    // 전체 발행
-    if (!transforms.empty()) {
-        tf_broadcaster_->sendTransform(transforms);
-    }
+    PublishMarkerTransforms(
+        cam_to_base, image_msg->header, ids, tvecs, rvecs);
 }
 
 int main(int argc, char * argv[])
@@ -273,22 +293,24 @@ geometry_msgs::msg::TransformStamped ArmVisionSubscriber::MakeMarkerTransform(
         const geometry_msgs::msg::TransformStamped & cam_to_base,
         const std_msgs::msg::Header & header,
         const int id,
-        const cv::Vec3d & tvec)
+        const cv::Vec3d & tvec,
+        const cv::Vec3d & rvec)
 {
     geometry_msgs::msg::PoseStamped marker_pose_camera_frame;
     geometry_msgs::msg::PoseStamped base_link_pose;
 
-    // 카메라 좌표계 값(cv::Vec3d)을 ROS 자료형인 geometry_msgs::msg::PoseStamped로 변경
-    // 지금 회전을 고려하지 않는 이유는 위치값 발행을 먼저 구현하고 그 다음 단계에서 회전까지 고려하려고 
-    // 하기 때문이다.
+    // 3차원 회전 벡터를 쿼터니언으로 변환.
+    // cv::Quat 의 성분 순서는 w, x, y, z 이고 geometry_msgs 는 x, y, z, w 다.
+    auto quat = cv::Quatd::createFromRvec(rvec);
+    
     marker_pose_camera_frame.header = header;
     marker_pose_camera_frame.pose.position.x = tvec[0];
     marker_pose_camera_frame.pose.position.y = tvec[1];
     marker_pose_camera_frame.pose.position.z = tvec[2];
-    marker_pose_camera_frame.pose.orientation.x = 0.0;
-    marker_pose_camera_frame.pose.orientation.y = 0.0;
-    marker_pose_camera_frame.pose.orientation.z = 0.0;
-    marker_pose_camera_frame.pose.orientation.w = 1.0;
+    marker_pose_camera_frame.pose.orientation.x = quat.x;
+    marker_pose_camera_frame.pose.orientation.y = quat.y;
+    marker_pose_camera_frame.pose.orientation.z = quat.z;
+    marker_pose_camera_frame.pose.orientation.w = quat.w;
 
     // 카메라 기준 마커 위치를 로봇 기준 마커 위치로 변환
     tf2::doTransform(marker_pose_camera_frame, base_link_pose, cam_to_base);
@@ -301,6 +323,8 @@ geometry_msgs::msg::TransformStamped ArmVisionSubscriber::MakeMarkerTransform(
 
     marker_tf.transform.translation.x = base_link_pose.pose.position.x;
     marker_tf.transform.translation.y = base_link_pose.pose.position.y;
+    // z의 경우 이미지 랜더링 문제로 인해 마커를 실제보다 작게 재는 문제 때문에 음수로 나온다.
+    // 이대로 사용하면 그리퍼가 바닥을 뚫고 가야하니 파지 높이는 이미 알고 있는 높이 값으로 쓴다.
     marker_tf.transform.translation.z = base_link_pose.pose.position.z;
     marker_tf.transform.rotation = base_link_pose.pose.orientation;
 

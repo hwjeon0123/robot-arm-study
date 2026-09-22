@@ -17,6 +17,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 # OpenCV 패키지는 시스템 라이브러리 패키지
 find_package(OpenCV REQUIRED)
 find_package(ament_cmake_auto REQUIRED)
+find_package(arm_common REQUIRED)
 
 add_executable(arm_vision src/main.cpp)
 
@@ -29,10 +30,11 @@ ament_target_dependencies(arm_vision
   geometry_msgs
   tf2_ros
   tf2_geometry_msgs
+  arm_common
 )
 
 #OpenCV 헤더 파일 경로 연결 (ROS 패키지가 아니므로 따로 연결 필요)
-target_include_directories(arm_vision PUBLIC
+target_include_directories(arm_vision PRIVATE
   ${OpenCV_INCLUDE_DIRS}
 )
 
