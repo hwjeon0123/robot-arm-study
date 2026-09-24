@@ -11,8 +11,15 @@ find_package(rclcpp REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 find_package(control_msgs REQUIRED)
 find_package(rclcpp_action REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 
-add_executable(arm_control_app src/main.cpp)
+add_executable(arm_control_app src/main.cpp src/arm_controller.cpp)
+target_include_directories(arm_control_app PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
 ament_target_dependencies(arm_control_app
   rclcpp 
   moveit_ros_planning_interface
