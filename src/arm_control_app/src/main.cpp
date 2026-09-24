@@ -13,6 +13,17 @@
 
 #include <exception>
 
+// SIGINT 처리용 전역 플래그
+std::atomic<bool> g_quit{false};
+
+//시그널 핸들러: 아무 동작도 하지 않고 플래그만 세우고 즉시 빠져나옴 (안전성 보장)
+void signal_handler(int signum) {
+    if(SIGINT == signum || SIGTERM == signum)
+    {
+        g_quit = true;
+    }    
+}
+
 inline void make_pose(
   geometry_msgs::msg::Pose & pose, double x, double y, double z, double qx, double qy, double qz,
   double qw)
@@ -34,9 +45,15 @@ bool ExecutePickAndPlaceCycle(std::shared_ptr<ArmController>& arm_ctrl)
     if (false == arm_ctrl->MoveToNamedTarget("test_configuration")) 
         return false;
 
+    if(g_quit)
+        return false;
+
     // 2. 타겟 위치 바로 위로 이동
     make_pose(pose, 0.4, 0.6, 0.1, 1.0, 0.0, 0.0, 0.0);
     if (false == arm_ctrl->MoveToPose(pose)) 
+        return false;
+
+    if(g_quit)
         return false;
 
     // 3. 물체를 잡기 위해 내려가기
@@ -44,8 +61,14 @@ bool ExecutePickAndPlaceCycle(std::shared_ptr<ArmController>& arm_ctrl)
     if (false == arm_ctrl->MoveToPose(pose)) 
         return false;
 
+    if(g_quit)
+        return false;
+
     // 4. 그리퍼 집기 (position=0.025, effort=20.0)
     if (false == arm_ctrl->OperateGripper(0.025, 20.0)) 
+        return false;
+
+    if(g_quit)
         return false;
 
     // 5. 물체를 들고 위로 이동
@@ -53,9 +76,15 @@ bool ExecutePickAndPlaceCycle(std::shared_ptr<ArmController>& arm_ctrl)
     if (false == arm_ctrl->MoveToPose(pose)) 
         return false;
 
+    if(g_quit)
+        return false;
+
     // 6. 내려놓을 위치로 내려가기
     make_pose(pose, 0.6, 0.4, 0.002, 1.0, 0.0, 0.0, 0.0);
     if (false == arm_ctrl->MoveToPose(pose)) 
+        return false;
+
+    if(g_quit)
         return false;
 
     // 7. 그리퍼 열기 (position=0.0, effort=20.0)
@@ -69,8 +98,18 @@ int main(int argc, char * argv[])
 {
     rclcpp::NodeOptions node_opt;
 
+    rclcpp::InitOptions init_options;
+    // ROS2 자체 시그널 핸들러(Ctrl+C 처리) 비활성화
+    init_options.shutdown_on_signal = false;
     // Initialize ROS and create the Node
-    rclcpp::init(argc, argv);
+    rclcpp::init(argc, argv, init_options);
+
+    // 시그널 처리 등록
+    std::signal(SIGINT, signal_handler);
+    std::signal(SIGTERM, signal_handler);
+    // 파이프 에러 무시
+    std::signal(SIGPIPE, SIG_IGN);
+
     // main 함수가 끝날 때(성공이든 에러 반환이든) 무조건 shutdown()을 대신 불러줌
     std::shared_ptr<void> rclcpp_guard(nullptr, [](void*) { rclcpp::shutdown(); });
 
@@ -93,6 +132,19 @@ int main(int argc, char * argv[])
             RCLCPP_ERROR(logger, "Failed to init MoveIt");
             return 1;
         }
+
+        using namespace std::chrono_literals;
+        rclcpp::TimerBase::SharedPtr quit_mon_timer;
+        quit_mon_timer = arm_controller->create_wall_timer(100ms, [arm_controller, &quit_mon_timer]() -> 
+            void {
+                if(g_quit)
+                {
+                    arm_controller->Stop();
+                    // Stop timer
+                    quit_mon_timer->cancel();
+                }
+            }
+        );
 
         if (false == ExecutePickAndPlaceCycle(arm_controller)) {
             RCLCPP_ERROR(logger, "Pick and place task failed");

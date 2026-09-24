@@ -145,6 +145,18 @@ bool ArmController::OperateGripper(double position, double effort)
     };
 
     auto goal_handle_future = gripper_client_->async_send_goal(goal, options);
+    while (rclcpp::ok() && (false == quit_flag_)) {
+        if (std::future_status::ready == 
+                goal_handle_future.wait_for(std::chrono::milliseconds(100))) {
+            break;
+        }
+    }
+
+    if(false == rclcpp::ok() || (true == quit_flag_)) {
+        RCLCPP_ERROR(this->get_logger(), "Gripper operation cancelled before accept");
+        return false;
+    }
+         
     auto goal_handle = goal_handle_future.get();
     if (!goal_handle) {
         RCLCPP_ERROR(this->get_logger(), "Gripper goal was rejected");
@@ -152,7 +164,43 @@ bool ArmController::OperateGripper(double position, double effort)
     }
 
     auto result_future = gripper_client_->async_get_result(goal_handle);
-    result_future.get();
-    return true;
+    bool is_cancelled = false;
+
+    while (rclcpp::ok() && !quit_flag_) {
+        if (std::future_status::ready == 
+                result_future.wait_for(std::chrono::milliseconds(100))) {
+            break;
+        }
+    }
+
+    // 결과를 기다리는 도중 중단 요청이 오면 취소 발송
+    if (!rclcpp::ok() || quit_flag_) {
+        gripper_client_->async_cancel_goal(goal_handle);
+        is_cancelled = true;
+
+        // 취소를 보낸 뒤 서버 처리가 완전히 끝날 때까지 1번 더 기다림
+        while (rclcpp::ok()) {
+            if (std::future_status::ready == 
+                    result_future.wait_for(std::chrono::milliseconds(100))) {
+                break;
+            }
+        }
+    }
+
+    if (is_cancelled) {
+        RCLCPP_ERROR(this->get_logger(), "Gripper operation cancelled during execution");
+        return false;
+    }
+    
+    auto result = result_future.get();
+    return (result.code == rclcpp_action::ResultCode::SUCCEEDED);
 }
 
+void ArmController::Stop()
+{
+    quit_flag_ = true;
+    if(nullptr != move_group_)
+    {
+        move_group_->stop();
+    }
+}

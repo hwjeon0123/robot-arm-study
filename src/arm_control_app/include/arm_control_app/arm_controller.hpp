@@ -19,9 +19,11 @@ public:
     bool MoveToNamedTarget(const std::string& target_name);
     bool MoveToPose(const geometry_msgs::msg::Pose& target_pose);
     bool OperateGripper(double position, double effort);
+    void Stop();
 
 private:
     bool SetupCollisionObject();
     std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_;
     rclcpp_action::Client<control_msgs::action::ParallelGripperCommand>::SharedPtr gripper_client_;
+    std::atomic<bool> quit_flag_{false}; 
 };
