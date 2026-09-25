@@ -1,6 +1,3 @@
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
-
 #include <control_msgs/action/parallel_gripper_command.hpp>
 #include <memory>
 #include <moveit/move_group_interface/move_group_interface.hpp>
@@ -10,6 +7,10 @@
 
 #include "arm_control_app/arm_controller.hpp"
 #include "arm_control_app/thread_executor.hpp"
+
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <exception>
 
@@ -37,57 +38,79 @@ inline void make_pose(
     pose.orientation.w = qw;
 }
 
-bool ExecutePickAndPlaceCycle(std::shared_ptr<ArmController>& arm_ctrl)
+bool ExecutePickAndPlaceCycle(std::shared_ptr<ArmController>& arm_ctrl, 
+    geometry_msgs::msg::Vector3 marker_pos, geometry_msgs::msg::Quaternion marker_rot,
+    geometry_msgs::msg::Vector3 target_pos, geometry_msgs::msg::Quaternion target_rot)
 {
     geometry_msgs::msg::Pose pose;
 
-    // 1. test_configuration 이동
+    // test_configuration 이동
     if (false == arm_ctrl->MoveToNamedTarget("test_configuration")) 
         return false;
 
     if(g_quit)
         return false;
 
-    // 2. 타겟 위치 바로 위로 이동
-    make_pose(pose, 0.4, 0.6, 0.1, 1.0, 0.0, 0.0, 0.0);
+    // 마커 위치 바로 위로 이동
+    make_pose(pose, marker_pos.x, marker_pos.y, 0.1, 1.0, 0.0, 0.0, 0.0);
     if (false == arm_ctrl->MoveToPose(pose)) 
         return false;
 
     if(g_quit)
         return false;
 
-    // 3. 물체를 잡기 위해 내려가기
-    make_pose(pose, 0.4, 0.6, 0.002, 1.0, 0.0, 0.0, 0.0);
+    // 그리퍼 집기 (position=0.035, effort=20.0)
+    if (false == arm_ctrl->OperateGripper(0.025, 20.0)) 
+        return false;
+    if(g_quit)
+        return false;
+    // 그리퍼 열기 (position=0.0, effort=20.0)
+    if (false == arm_ctrl->OperateGripper(0.0, 20.0)) 
+        return false;
+    if(g_quit)
+        return false;
+
+
+    // 물체를 잡기 위해 내려가기
+    make_pose(pose, marker_pos.x, marker_pos.y, 0.002, 1.0, 0.0, 0.0, 0.0);
     if (false == arm_ctrl->MoveToPose(pose)) 
         return false;
 
     if(g_quit)
         return false;
 
-    // 4. 그리퍼 집기 (position=0.025, effort=20.0)
+    // 그리퍼 집기 (position=0.035, effort=20.0)
     if (false == arm_ctrl->OperateGripper(0.025, 20.0)) 
         return false;
 
     if(g_quit)
         return false;
 
-    // 5. 물체를 들고 위로 이동
-    make_pose(pose, 0.6, 0.4, 0.1, 1.0, 0.0, 0.0, 0.0);
+    // 수직 상승
+    make_pose(pose, marker_pos.x, marker_pos.y, 0.1, 1.0, 0.0, 0.0, 0.0);
     if (false == arm_ctrl->MoveToPose(pose)) 
         return false;
 
     if(g_quit)
         return false;
 
-    // 6. 내려놓을 위치로 내려가기
-    make_pose(pose, 0.6, 0.4, 0.002, 1.0, 0.0, 0.0, 0.0);
+    // 목표 지점 위로 이동
+    make_pose(pose, target_pos.x, target_pos.y, 0.1, 1.0, 0.0, 0.0, 0.0);
     if (false == arm_ctrl->MoveToPose(pose)) 
         return false;
 
     if(g_quit)
         return false;
 
-    // 7. 그리퍼 열기 (position=0.0, effort=20.0)
+    // 내려놓을 위치로 내려가기
+    make_pose(pose, target_pos.x, target_pos.y, 0.002, 1.0, 0.0, 0.0, 0.0);
+    if (false == arm_ctrl->MoveToPose(pose)) 
+        return false;
+
+    if(g_quit)
+        return false;
+
+    // 그리퍼 열기 (position=0.0, effort=20.0)
     if (false == arm_ctrl->OperateGripper(0.0, 20.0)) 
         return false;
 
@@ -146,7 +169,45 @@ int main(int argc, char * argv[])
             }
         );
 
-        if (false == ExecutePickAndPlaceCycle(arm_controller)) {
+        // TF listener. Create after spinner run.
+        std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+        std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
+        geometry_msgs::msg::TransformStamped tf_stamped;
+
+        geometry_msgs::msg::Vector3 target_loc;
+        geometry_msgs::msg::Quaternion target_rot;
+        target_loc.x = 0.6;
+        target_loc.y = 0.6;
+        target_loc.z = 0.002;
+        target_rot.x = 0.0;
+        target_rot.y = 0.0;
+        target_rot.z = 0.0;
+        target_rot.w = 1.0;
+
+        try {
+            tf_buffer_ = std::make_unique<tf2_ros::Buffer>(arm_controller->get_clock());
+            tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+        } catch (const std::exception & e) {
+            RCLCPP_ERROR(logger, "Failed to create tf2 buffer, listener or broadcaster: %s", e.what());
+            throw;
+        }
+
+        try {
+             tf_stamped = tf_buffer_->lookupTransform(
+                "base_link", "marker_0", tf2::TimePointZero,
+                tf2::durationFromSec(1.0));
+        } catch (const tf2::TransformException &ex) {
+            RCLCPP_INFO(logger,
+                "Could not transform base_link to "
+                "marker_0: %s", ex.what());
+            throw;
+        }
+
+        
+        if (false == ExecutePickAndPlaceCycle(arm_controller, 
+                tf_stamped.transform.translation, tf_stamped.transform.rotation,
+                target_loc, target_rot)) {
             RCLCPP_ERROR(logger, "Pick and place task failed");
             // Do not return to make arm return to the test configuration position
         }
