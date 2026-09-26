@@ -20,7 +20,7 @@
         <param name="initial_value">0.0</param>
       </state_interface>
     </joint>
-    <joint name="${tf_prefix}finger2_joint">
+    <joint name="${tf_prefix}finger2_joint" mimic="false">
       <state_interface name="position">
         <param name="initial_value">${initial_positions['finger2_joint']}</param>
       </state_interface>

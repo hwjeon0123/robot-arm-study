@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://wiki.ros.org/xacro">
 
-<!-- ① 인자 선언: launch나 CLI에서 값을 바꿔 넣을 수 있는 변수 -->
+<!-- 인자 선언: launch나 CLI에서 값을 바꿔 넣을 수 있는 변수 -->
   <xacro:arg name="name"      default="ur5e"/>
   <xacro:arg name="ur_type"   default="ur5e"/>
   <xacro:arg name="tf_prefix" default=""/>
