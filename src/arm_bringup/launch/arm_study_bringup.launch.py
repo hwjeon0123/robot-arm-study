@@ -27,8 +27,9 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration("use_sim_time", default="true")
     gazebo_gui = LaunchConfiguration("gazebo_gui")
     world_file = LaunchConfiguration("world_file")
+    board_yaw = LaunchConfiguration("board_yaw", default="0.0")
 
-    # ① xacro를 실행해 URDF 문자열을 만든다 (launch 실행 시점에 평가)
+    # xacro를 실행해 URDF 문자열을 만든다 (launch 실행 시점에 평가)
     robot_description_content = Command([
         FindExecutable(name="xacro"), " ",
         PathJoinSubstitution(
@@ -42,7 +43,7 @@ def generate_launch_description():
     ])
     robot_description = {"robot_description": ParameterValue(robot_description_content, value_type=str)}
 
-    # ② robot_state_publisher: URDF를 /robot_description 토픽 + TF로 발행
+    # robot_state_publisher: URDF를 /robot_description 토픽 + TF로 발행
     robot_state_publisher_node = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
@@ -102,6 +103,7 @@ def generate_launch_description():
             "-x", "0.4",
             "-y", "0.6",
             "-z", "0.0025",
+            "-Y", board_yaw,
         ],
     )
 
@@ -153,6 +155,7 @@ def generate_launch_description():
         DeclareLaunchArgument("ur_type", default_value="ur5e"),
         DeclareLaunchArgument("use_sim_time", default_value="true"),
         DeclareLaunchArgument("gazebo_gui", default_value="true"),
+        DeclareLaunchArgument("board_yaw", default_value="0.0"),
         # world 파일을 새로 생성한 파일로 변경
         DeclareLaunchArgument(
             "world_file",

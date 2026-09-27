@@ -25,6 +25,8 @@ ament_target_dependencies(arm_control_app
   moveit_ros_planning_interface
   control_msgs
   rclcpp_action
+  tf2_ros
+  tf2_geometry_msgs
 )
 
 install(TARGETS

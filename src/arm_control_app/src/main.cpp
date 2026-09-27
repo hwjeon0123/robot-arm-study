@@ -13,6 +13,7 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <exception>
+#include <cmath>
 
 // SIGINT 처리용 전역 플래그
 std::atomic<bool> g_quit{false};
@@ -51,35 +52,40 @@ bool ExecutePickAndPlaceCycle(std::shared_ptr<ArmController>& arm_ctrl,
     if(g_quit)
         return false;
 
+    tf2::Quaternion marker_q;
+    tf2::fromMsg(marker_rot, marker_q);
+
+    
+    // 마커 x 축이 보드의 짧은 변을 향해 있어 z축 기준으로 90도 회전시켜 그리퍼가 긴 변을 
+    // 잡도록 하기 위한 회전 쿼터니언
+    tf2::Quaternion align;
+    align.setRPY(0.0, 0.0, M_PI_2);
+        
+    // ArUco 마커는 z축이 위를 향하고 있다. 이를 x축 기준으로 180도 회전시켜 그리퍼의 회전 방향 계산
+    tf2::Quaternion tcp_q = marker_q * align * tf2::Quaternion(1, 0, 0, 0);   // 생성자 인자 순서는 x,y,z,w
+
+    tf2::Quaternion target_q;
+    tf2::fromMsg(target_rot, target_q);
+    // 목적 위치의 자세도 마커의 자세이므로 그리퍼는 180도 회전된 자세이어야 한다.
+    tf2::Quaternion place_q = target_q * tf2::Quaternion(1, 0, 0, 0);
+
     // 마커 위치 바로 위로 이동
-    make_pose(pose, marker_pos.x, marker_pos.y, 0.1, 1.0, 0.0, 0.0, 0.0);
+    make_pose(pose, marker_pos.x, marker_pos.y, 0.1, tcp_q.x(), tcp_q.y(), tcp_q.z(), tcp_q.w());
     if (false == arm_ctrl->MoveToPose(pose)) 
         return false;
 
     if(g_quit)
         return false;
-
-    // 그리퍼 집기 (position=0.035, effort=20.0)
-    if (false == arm_ctrl->OperateGripper(0.025, 20.0)) 
-        return false;
-    if(g_quit)
-        return false;
-    // 그리퍼 열기 (position=0.0, effort=20.0)
-    if (false == arm_ctrl->OperateGripper(0.0, 20.0)) 
-        return false;
-    if(g_quit)
-        return false;
-
 
     // 물체를 잡기 위해 내려가기
-    make_pose(pose, marker_pos.x, marker_pos.y, 0.002, 1.0, 0.0, 0.0, 0.0);
+    make_pose(pose, marker_pos.x, marker_pos.y, 0.002, tcp_q.x(), tcp_q.y(), tcp_q.z(), tcp_q.w());
     if (false == arm_ctrl->MoveToPose(pose)) 
         return false;
 
     if(g_quit)
         return false;
 
-    // 그리퍼 집기 (position=0.035, effort=20.0)
+    // 그리퍼 집기 
     if (false == arm_ctrl->OperateGripper(0.025, 20.0)) 
         return false;
 
@@ -87,7 +93,7 @@ bool ExecutePickAndPlaceCycle(std::shared_ptr<ArmController>& arm_ctrl,
         return false;
 
     // 수직 상승
-    make_pose(pose, marker_pos.x, marker_pos.y, 0.1, 1.0, 0.0, 0.0, 0.0);
+    make_pose(pose, marker_pos.x, marker_pos.y, 0.1, tcp_q.x(), tcp_q.y(), tcp_q.z(), tcp_q.w());
     if (false == arm_ctrl->MoveToPose(pose)) 
         return false;
 
@@ -95,7 +101,7 @@ bool ExecutePickAndPlaceCycle(std::shared_ptr<ArmController>& arm_ctrl,
         return false;
 
     // 목표 지점 위로 이동
-    make_pose(pose, target_pos.x, target_pos.y, 0.1, 1.0, 0.0, 0.0, 0.0);
+    make_pose(pose, target_pos.x, target_pos.y, 0.1, place_q.x(), place_q.y(), place_q.z(), place_q.w());
     if (false == arm_ctrl->MoveToPose(pose)) 
         return false;
 
@@ -103,7 +109,7 @@ bool ExecutePickAndPlaceCycle(std::shared_ptr<ArmController>& arm_ctrl,
         return false;
 
     // 내려놓을 위치로 내려가기
-    make_pose(pose, target_pos.x, target_pos.y, 0.002, 1.0, 0.0, 0.0, 0.0);
+    make_pose(pose, target_pos.x, target_pos.y, 0.002, place_q.x(), place_q.y(), place_q.z(), place_q.w());
     if (false == arm_ctrl->MoveToPose(pose)) 
         return false;
 

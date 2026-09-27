@@ -15,7 +15,7 @@ public:
     explicit ArmController(const rclcpp::NodeOptions &options = rclcpp::NodeOptions());
     ~ArmController();
 
-    bool InitMoveIt(double planning_time, unsigned int num_planning_attemps);
+    bool InitMoveIt(double planning_time, unsigned int num_planning_attempts);
     bool MoveToNamedTarget(const std::string& target_name);
     bool MoveToPose(const geometry_msgs::msg::Pose& target_pose);
     bool OperateGripper(double position, double effort);

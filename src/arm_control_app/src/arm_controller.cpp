@@ -15,7 +15,7 @@ ArmController::~ArmController()
     }
 }
 
-bool ArmController::InitMoveIt(double planning_time, unsigned int num_planning_attemps)
+bool ArmController::InitMoveIt(double planning_time, unsigned int num_planning_attempts)
 {
     if(nullptr != move_group_)
     {
@@ -58,7 +58,7 @@ bool ArmController::InitMoveIt(double planning_time, unsigned int num_planning_a
     }
 
     move_group_->setPlanningTime(planning_time);
-    move_group_->setNumPlanningAttempts(num_planning_attemps);
+    move_group_->setNumPlanningAttempts(num_planning_attempts);
 
     return true;
 }
