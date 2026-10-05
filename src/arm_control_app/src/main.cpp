@@ -175,7 +175,6 @@ int main(int argc, char * argv[])
             }
         );
 
-        // TF listener. Create after spinner run.
         std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
         std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
         geometry_msgs::msg::TransformStamped tf_stamped;
