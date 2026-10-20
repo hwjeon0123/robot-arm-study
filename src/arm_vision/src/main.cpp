@@ -16,6 +16,7 @@
 
 #include <stdexcept>
 #include <memory>
+#include <cmath>
 
 #include "arm_common/log_throttle.hpp"
 
@@ -32,18 +33,19 @@ class ArmVisionSubscriber : public rclcpp::Node
     ArmVisionSubscriber()
     : Node("arm_vision_subscriber")
     {
+        linearize_srgb_ = this->declare_parameter("apply_linearization", true);
+    
         // Create dictionary for ArUco marker detection
         cv_dict_ = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_4X4_50);
         aruco_parameters_ = cv::aruco::DetectorParameters::create();
         if (!cv_dict_ || !aruco_parameters_) {
             throw std::runtime_error("ArUco dictionary or detector parameters not created");
         }
-        /* 기본값은 CORNER_REFINE_NONE 이며 외곽선에서 얻은 정수에 가까운 좌표를 그대로 쓴다.
-         시뮬레이션에서 측정해 보니 마커 폭이 46.3px 로 잡혔는데 영상에서 직접 잰 경계는 46.79px 였다.
-         픽셀 계산의 정밀도 문제로 판단해 CORNER_REFINE_SUBPIX를 사용해서 정밀도를 높이니 46.72px 로 영상에 맞았다.
-         다만 이것으로 오차가 다 없어지지는 않았다. 27mm 마커라면 47.73px 여야 하는데 영상 자체가 46.79px 였다. 
-         이 오차는 렌더링 과정에서 검은 사각형이 실제보다 작게 그려져서 발생하는 것이어서 개선할 수 없다.
-         */
+
+        srgb_to_linear_lut_ = cv::Mat(1, 256, CV_8U);
+        FillSrgbToLinearLut(srgb_to_linear_lut_);
+
+        // CORNER_REFINE_SUBPIX 옵션을 켜서 오차를 조금 더 줄일 수 있도록 함.
         aruco_parameters_->cornerRefinementMethod = cv::aruco::CORNER_REFINE_SUBPIX;
 
         try {
@@ -89,6 +91,8 @@ class ArmVisionSubscriber : public rclcpp::Node
     std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
     std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+    cv::Mat srgb_to_linear_lut_;
+    bool linearize_srgb_{true};
     
     void HandleImage(const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
         const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg);
@@ -107,6 +111,9 @@ class ArmVisionSubscriber : public rclcpp::Node
         const std::vector<int> & ids,
         const std::vector<cv::Vec3d> & tvecs,
         const std::vector<cv::Vec3d> & rvecs);
+
+    // Calculate the linear RGB value from sRGB value using a lookup table
+    void FillSrgbToLinearLut(cv::Mat & lut);
 };
 
 
@@ -229,8 +236,16 @@ void ArmVisionSubscriber::HandleImage(const sensor_msgs::msg::Image::ConstShared
     geometry_msgs::msg::TransformStamped cam_to_base;
     
     // Detect markers in the image frame
-    cv::aruco::detectMarkers(cv_const_ptr->image, cv_dict_, corners, ids,
+    if(true == linearize_srgb_) {
+        cv::Mat linearized_image;
+        cv::LUT(cv_const_ptr->image, srgb_to_linear_lut_, linearized_image);
+        
+        cv::aruco::detectMarkers(linearized_image, cv_dict_, corners, ids,
                              aruco_parameters_);
+    } else {
+        cv::aruco::detectMarkers(cv_const_ptr->image, cv_dict_, corners, ids,
+                             aruco_parameters_);
+    }
 
     if (true == ids.empty()) 
     {
@@ -323,10 +338,23 @@ geometry_msgs::msg::TransformStamped ArmVisionSubscriber::MakeMarkerTransform(
 
     marker_tf.transform.translation.x = base_link_pose.pose.position.x;
     marker_tf.transform.translation.y = base_link_pose.pose.position.y;
-    // z의 경우 이미지 랜더링 문제로 인해 마커를 실제보다 작게 재는 문제 때문에 음수로 나온다.
-    // 이대로 사용하면 그리퍼가 바닥을 뚫고 가야하니 파지 높이는 이미 알고 있는 높이 값으로 쓴다.
     marker_tf.transform.translation.z = base_link_pose.pose.position.z;
     marker_tf.transform.rotation = base_link_pose.pose.orientation;
 
     return marker_tf;
+}
+
+void ArmVisionSubscriber::FillSrgbToLinearLut(cv::Mat & lut)
+{
+    for(int i = 0; i < 256; i++)
+    {
+        float c_prime = i / 255.0f;
+        float c_linear = 0.0f;
+        if (c_prime <= 0.04045f)
+            c_linear = c_prime / 12.92f;
+        else
+            c_linear = std::pow((c_prime + 0.055f) / 1.055f, 2.4f);
+        
+        lut.at<uint8_t>(i) = std::lround(c_linear * 255.0f);
+    }
 }
